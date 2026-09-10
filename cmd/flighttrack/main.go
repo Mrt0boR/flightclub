@@ -88,6 +88,7 @@ type dashFlags struct {
 	refresh *time.Duration
 	hook    *string
 	noAuto  *bool
+	dev     *bool
 }
 
 func registerDashFlags() dashFlags {
@@ -99,6 +100,7 @@ func registerDashFlags() dashFlags {
 		refresh: flag.Duration("refresh", 5*time.Minute, "how often to auto-refresh the snapshot"),
 		hook:    flag.String("webhook", os.Getenv("FLIGHTTRACK_WEBHOOK"), "optional https URL to POST events to"),
 		noAuto:  flag.Bool("no-auto-refresh", false, "start with auto-refresh disabled"),
+		dev:     flag.Bool("dev", false, "seed a fake flight; ctrl+t then simulates its landing (for testing notifications)"),
 	}
 }
 
@@ -118,6 +120,7 @@ func runDashboard() {
 		Refresh:     *flags.refresh,
 		AutoRefresh: !*flags.noAuto,
 		WebhookURL:  *flags.hook,
+		Dev:         *flags.dev,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "flighttrack: %v\n", err)

@@ -29,6 +29,7 @@ type Config struct {
 	Refresh     time.Duration
 	AutoRefresh bool
 	WebhookURL  string // optional https endpoint for events
+	Dev         bool   // seed a fake flight and enable the landing simulator
 }
 
 // Run opens the dashboard and blocks until the user quits. It saves the
@@ -43,7 +44,9 @@ func Run(cfg Config) error {
 		}
 		m.webhook = hook
 	}
-	if err := m.preseed(cfg.Flight, cfg.Origin, cfg.Dest); err != nil {
+	if cfg.Dev {
+		m.seedDevFlight()
+	} else if err := m.preseed(cfg.Flight, cfg.Origin, cfg.Dest); err != nil {
 		return err
 	}
 	if m.histWarning != "" {

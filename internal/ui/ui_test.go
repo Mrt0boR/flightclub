@@ -381,3 +381,158 @@ func TestSendIsInertWhenNotificationsAreOff(t *testing.T) {
 		t.Error("send should do nothing while notifications are off")
 	}
 }
+
+// Holding an action key produces a stream of identical KeyMsgs. Only the first
+// should do anything; the rest are the OS key-repeat and must be dropped, or a
+// held `r` spends API credits on every repeat.
+func TestHeldActionKeyIsDebounced(t *testing.T) {
+	m := airborneModel(t)
+	m.autoRefresh = false
+
+	press := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}
+
+	updated, cmd := m.onDashKey(press)
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("the first press of r should start a refresh")
+	}
+	if !m.loading {
+		t.Fatal("the first press should set loading")
+	}
+
+	// Immediate repeats, as from a held key.
+	for i := 0; i < 5; i++ {
+		updated, cmd = m.onDashKey(press)
+		m = updated.(model)
+		if cmd != nil {
+			t.Fatalf("repeat %d of a held r started another refresh", i+1)
+		}
+	}
+
+	// A deliberate press after the debounce window is honoured again.
+	m.lastActionAt = m.lastActionAt.Add(-2 * keyDebounce)
+	m.loading = false
+	_, cmd = m.onDashKey(press)
+	if cmd == nil {
+		t.Error("a fresh press after the debounce window should refresh again")
+	}
+}
+
+// Navigation keys are meant to be held, so they are not debounced.
+func TestNavigationKeysAreNotDebounced(t *testing.T) {
+	m := airborneModel(t)
+	m.menuIdx = 0
+	for i := 0; i < 3; i++ {
+		updated, _ := m.onDashKey(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(model)
+	}
+	if m.menuIdx != 3 {
+		t.Errorf("three held downs moved the cursor to %d, want 3", m.menuIdx)
+	}
+}
+
+// Once a flight has landed near its destination, auto-refresh should switch
+// itself off rather than keep polling a flight that has arrived.
+func TestAutoRefreshStopsAfterLanding(t *testing.T) {
+	m := airborneModel(t)
+	m.notifyOn = false
+	m.autoRefresh = true
+	airborne := false
+	m.prevOnGround = &airborne
+
+	dest, _ := airports.Lookup("JFK")
+	landed := &opensky.Observation{
+		Icao24: "400a1b", Callsign: "BAW117",
+		Lat: dest.Lat, Lon: dest.Lon, HasPos: true,
+		OnGround: true, Velocity: 6,
+	}
+	snap := &opensky.Snapshot{
+		Taken:    m.now,
+		Fetched:  m.now,
+		Aircraft: map[opensky.FlightID]*opensky.Observation{m.flight: landed},
+	}
+	updated, _ := m.onSnapshot(snapshotMsg{snap: snap})
+	m2 := updated.(model)
+
+	if m2.autoRefresh {
+		t.Error("auto-refresh should be off after a landing at the destination")
+	}
+	var loggedLanding bool
+	for _, l := range m2.logs {
+		if strings.Contains(l.text, "has landed") {
+			loggedLanding = true
+		}
+	}
+	if !loggedLanding {
+		t.Error("the landing was not logged")
+	}
+}
+
+// A spurious on-ground report far from the destination is likely bad data, so
+// auto-refresh should keep running to give the next poll a chance to correct.
+func TestAutoRefreshSurvivesImplausibleLanding(t *testing.T) {
+	m := airborneModel(t)
+	m.notifyOn = false
+	m.autoRefresh = true
+	airborne := false
+	m.prevOnGround = &airborne
+
+	// On the ground mid-Atlantic, nowhere near JFK.
+	landed := &opensky.Observation{
+		Icao24: "400a1b", Callsign: "BAW117",
+		Lat: 45.0, Lon: -30.0, HasPos: true, OnGround: true, Velocity: 6,
+	}
+	snap := &opensky.Snapshot{
+		Taken: m.now, Fetched: m.now,
+		Aircraft: map[opensky.FlightID]*opensky.Observation{m.flight: landed},
+	}
+	updated, _ := m.onSnapshot(snapshotMsg{snap: snap})
+	if !updated.(model).autoRefresh {
+		t.Error("auto-refresh should survive an implausible landing report")
+	}
+}
+
+// -dev seeds a flight straight onto the dashboard, and ctrl+t drives it
+// through the real landing path.
+func TestDevModeSimulatesLanding(t *testing.T) {
+	m := newTestModel(t)
+	m.notifyOn = false
+	m.seedDevFlight()
+
+	if m.screen != screenDash || m.obs == nil || m.obs.OnGround {
+		t.Fatal("dev mode should open on a dashboard tracking an airborne flight")
+	}
+
+	updated, cmd := m.onDashKey(tea.KeyMsg{Type: tea.KeyCtrlT})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("ctrl+t should produce a synthetic snapshot")
+	}
+
+	msg := cmd()
+	snapMsg, ok := msg.(snapshotMsg)
+	if !ok {
+		t.Fatalf("expected a snapshotMsg, got %T", msg)
+	}
+	updated, _ = m.onSnapshot(snapMsg)
+	m = updated.(model)
+
+	var landed bool
+	for _, l := range m.logs {
+		if strings.Contains(l.text, "has landed") {
+			landed = true
+		}
+	}
+	if !landed {
+		t.Errorf("ctrl+t did not drive the flight to a landing, logs: %v", m.logs)
+	}
+}
+
+// ctrl+t does nothing outside dev mode.
+func TestSimulateLandingIsDevOnly(t *testing.T) {
+	m := airborneModel(t)
+	_, cmd := m.onDashKey(tea.KeyMsg{Type: tea.KeyCtrlT})
+	if cmd != nil {
+		t.Error("ctrl+t should be inert when not in dev mode")
+	}
+}

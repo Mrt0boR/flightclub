@@ -23,15 +23,27 @@ func ShortAge(age time.Duration) string {
 	}
 }
 
-// Trunc shortens text to limit characters, marking the cut with a full stop.
+// Trunc shortens text to about limit display columns. When it has to cut it
+// backs up to a word boundary where one is reasonably close, and marks the cut
+// with an ellipsis, so the result never ends mid-word ("arriving in abo.").
 func Trunc(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
 	if len(text) <= limit {
 		return text
 	}
-	if limit <= 1 {
-		return text[:limit]
+	if limit == 1 {
+		return "…"
 	}
-	return text[:limit-1] + "."
+
+	cut := text[:limit-1]
+	// Prefer the last space, but not if that discards more than half the
+	// budget — a single long word still has to be cut somewhere.
+	if space := strings.LastIndexByte(cut, ' '); space > limit/2 {
+		cut = cut[:space]
+	}
+	return strings.TrimRight(cut, " ") + "…"
 }
 
 // Wrap breaks text on spaces at width.

@@ -176,8 +176,28 @@ func (m *model) phaseChangeCmds(obs *opensky.Observation) []tea.Cmd {
 			Body:  obs.Describe(),
 		}))
 		m.arrivalAlerted = true // no point warning about an arrival now
+
+		// The flight is down; nothing more will change. Left running,
+		// auto-refresh would keep spending API credits every few minutes and
+		// filling the log with "not in this snapshot". Stop it — unless the
+		// landing was reported nowhere near the destination, which means the
+		// data is suspect and the next poll should get a chance to correct it.
+		if m.autoRefresh && m.landingLooksReal(obs) {
+			m.autoRefresh = false
+			m.logf(dimStyle, "auto-refresh off, flight down (a to resume)")
+		}
 	}
 	return cmds
+}
+
+// landingLooksReal sanity-checks an on-ground report against the destination.
+// With no destination set there is nothing to check against, so it trusts the
+// feed.
+func (m *model) landingLooksReal(obs *opensky.Observation) bool {
+	if m.dest.IATA == "" || !obs.HasPos {
+		return true
+	}
+	return eta.DistanceNM(obs.Lat, obs.Lon, m.dest.Lat, m.dest.Lon) < 75
 }
 
 // checkArrival fires the approaching-arrival alert once per flight.

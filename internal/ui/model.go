@@ -37,6 +37,9 @@ const (
 	// How close to arrival the "arriving soon" alert fires.
 	arrivalAlertAt = 15 * time.Minute
 	maxLogLines    = 8
+	// Repeats of the same action key faster than this are taken as key-repeat
+	// from a held key, not separate presses.
+	keyDebounce = 350 * time.Millisecond
 )
 
 type logEntry struct {
@@ -79,6 +82,17 @@ type model struct {
 	autoRefresh bool
 	refreshIn   time.Duration
 	nextRefresh time.Time
+
+	// Terminals cannot tell a held key from repeated taps, so an action key
+	// that repeats within keyDebounce of itself is treated as one press. This
+	// stops a held `r` from spending API credits on every repeat, and a held
+	// `n` from flickering a toggle.
+	lastActionKey string
+	lastActionAt  time.Time
+
+	// dev mode seeds a fake flight and enables ctrl+t to simulate a landing,
+	// so notifications can be exercised without waiting for a real one.
+	dev bool
 
 	toast          notify.Toast
 	webhook        *notify.Webhook
@@ -171,11 +185,6 @@ func deliver(set *notify.Set, e notify.Event) tea.Msg {
 	return notifyDoneMsg{}
 }
 
-// Init is one of the three methods Bubble Tea requires on a model, alongside
-// Update (in update.go) and View (in view.go). It runs once at startup and
-// returns the work that should begin immediately: the cursor blinking, the
-// spinner animating, and the once-a-second clock tick that drives the
-// countdown. tea.Batch bundles them so they all start together.
 // checkUpdate asks GitHub whether a newer release exists. It runs off the UI
 // goroutine like any other command, is capped to one network call a day by
 // the version package, and stays silent on every failure.
@@ -192,6 +201,11 @@ func checkUpdate() tea.Cmd {
 	}
 }
 
+// Init is one of the three methods Bubble Tea requires on a model, alongside
+// Update (in update.go) and View (in view.go). It runs once at startup and
+// returns the work that should begin immediately: the cursor blinking, the
+// spinner animating, the once-a-second clock tick that drives the countdown,
+// and a one-shot check for a newer release. tea.Batch starts them together.
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{textinput.Blink, m.spin.Tick, tick(), checkUpdate()}
 	if m.loading {
@@ -209,6 +223,16 @@ func (m *model) logf(tone lipgloss.Style, format string, args ...any) {
 	if len(m.logs) > maxLogLines {
 		m.logs = m.logs[len(m.logs)-maxLogLines:]
 	}
+}
+
+// heldKey reports whether this action key has repeated within keyDebounce of
+// its last press — i.e. the user is leaning on it rather than tapping. It
+// records the press as a side effect, so call it once per keystroke.
+func (m *model) heldKey(key string) bool {
+	now := time.Now()
+	held := key == m.lastActionKey && now.Sub(m.lastActionAt) < keyDebounce
+	m.lastActionKey, m.lastActionAt = key, now
+	return held
 }
 
 // recompute refreshes the estimate from the current observation, and remembers

@@ -26,8 +26,23 @@ const (
 	menuCount
 )
 
+// shortcutItem maps an action key to the menu item it triggers.
+var shortcutItem = map[string]int{
+	"enter": -1, // -1 means "whatever the cursor is on"
+	" ":     -1,
+	"r":     menuRefresh,
+	"n":     menuNotify,
+	"a":     menuAuto,
+	"o":     menuOrigin,
+	"d":     menuDest,
+	"f":     menuFlight,
+}
+
 func (m model) onDashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	switch key {
+	// Navigation is fine to hold down, so it does not go through the guard.
 	case "up", "k":
 		if m.menuIdx > 0 {
 			m.menuIdx--
@@ -38,24 +53,24 @@ func (m model) onDashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.menuIdx++
 		}
 		return m, nil
-	case "enter", " ":
-		return m.activate(m.menuIdx)
-	case "r":
-		return m.activate(menuRefresh)
-	case "n":
-		return m.activate(menuNotify)
-	case "a":
-		return m.activate(menuAuto)
-	case "o":
-		return m.activate(menuOrigin)
-	case "d":
-		return m.activate(menuDest)
-	case "f":
-		return m.activate(menuFlight)
 	case "q", "esc":
 		return m, tea.Quit
+	case "ctrl+t":
+		return m.simulateLanding()
 	}
-	return m, nil
+
+	item, isAction := shortcutItem[key]
+	if !isAction {
+		return m, nil
+	}
+	// One press per tap: ignore the key-repeat stream from a held key.
+	if m.heldKey(key) {
+		return m, nil
+	}
+	if item == -1 {
+		item = m.menuIdx
+	}
+	return m.activate(item)
 }
 
 // activate runs one menu item, whether it was reached by the cursor or by its
@@ -133,6 +148,11 @@ func (m model) viewDash() string {
 
 	left := panelStyle.Width(leftW).Height(h).Render(leftBody)
 	right := panelStyle.Width(rightW).Height(h).Render(rightBody)
+
+	footer := " r refresh   n notify   a auto   o origin   d destination   f flight   q quit"
+	if m.dev {
+		footer = " DEV: ctrl+t simulates a landing  |  q quit"
+	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" +
-		dimStyle.Render(" r refresh   n notify   a auto   o origin   d destination   f flight   q quit") + "\n"
+		dimStyle.Render(footer) + "\n"
 }

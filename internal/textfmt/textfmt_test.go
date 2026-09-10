@@ -19,11 +19,24 @@ func TestWrap(t *testing.T) {
 }
 
 func TestTrunc(t *testing.T) {
-	if got := Trunc("abcdefgh", 4); len(got) != 4 {
-		t.Errorf("trunc to 4 gave %q", got)
-	}
+	// Short enough: passes straight through.
 	if got := Trunc("abc", 10); got != "abc" {
 		t.Errorf("short strings should pass through, got %q", got)
+	}
+	// The bug this fixes: cutting mid-word.
+	if got := Trunc("RYR3AC arriving in about 8m", 23); got != "RYR3AC arriving in…" {
+		t.Errorf("Trunc should cut on a word boundary, got %q", got)
+	}
+	// A single long word has nowhere good to cut, so it just gets shortened.
+	if got := Trunc("supercalifragilistic", 8); got != "superca…" {
+		t.Errorf("long single word: got %q", got)
+	}
+	// Never ends on a bare space before the ellipsis.
+	if got := Trunc("one two three", 8); strings.HasSuffix(got, " …") {
+		t.Errorf("trailing space before ellipsis: %q", got)
+	}
+	if Trunc("anything", 0) != "" {
+		t.Error("a zero limit should give empty text")
 	}
 }
 

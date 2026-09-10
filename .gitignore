@@ -8,3 +8,9 @@ flighttrack-watch-state.json
 # Downloaded source data for the airport table generator. The generated
 # internal/airports/data_gen.go IS committed; the 12 MB CSV it came from is not.
 airports.csv
+
+# Agent worktrees (Claude Code)
+.claude/worktrees/
+
+# Local bug notes and screenshots (working material, not shipped)
+bugs/
