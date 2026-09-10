@@ -113,25 +113,25 @@ func registerDashFlags() dashFlags {
 }
 
 func runDashboard() {
-	f := registerDashFlags()
+	flags := registerDashFlags()
 	flag.Parse()
 
-	if *f.refresh < time.Minute {
+	if *flags.refresh < time.Minute {
 		fmt.Fprintln(os.Stderr, "refresh interval must be at least 1m, to stay inside the free API quota")
 		os.Exit(2)
 	}
 
-	m := newModel(*f.refresh, !*f.noAuto)
+	m := newModel(*flags.refresh, !*flags.noAuto)
 
-	if *f.hook != "" {
-		w, err := notify.NewWebhook(*f.hook)
+	if *flags.hook != "" {
+		hook, err := notify.NewWebhook(*flags.hook)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "webhook: %v\n", err)
 			os.Exit(2)
 		}
-		m.webhook = w
+		m.webhook = hook
 	}
-	if err := m.preseed(*f.flight, *f.origin, *f.dest); err != nil {
+	if err := m.preseed(*flags.flight, *flags.origin, *flags.dest); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(2)
 	}
@@ -139,38 +139,38 @@ func runDashboard() {
 		m.logf(warnStyle, "history: %s", m.histWarning)
 	}
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	final, err := p.Run()
+	program := tea.NewProgram(m, tea.WithAltScreen())
+	finalState, err := program.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "flighttrack: %v\n", err)
 		os.Exit(1)
 	}
 	// Exit save: whatever was on screen at the end becomes the top of the
 	// history, cached position included.
-	if fm, ok := final.(model); ok {
-		fm.persist()
+	if finalModel, ok := finalState.(model); ok {
+		finalModel.persist()
 	}
 }
 
 // newModel builds the dashboard's starting state: inputs, spinner, API client
 // and whatever history is on disk.
 func newModel(refresh time.Duration, autoRefresh bool) model {
-	fi := textinput.New()
-	fi.Placeholder = "BA117"
-	fi.CharLimit = 16
-	fi.Width = 24
-	fi.Prompt = "> "
-	fi.Focus()
+	flightInput := textinput.New()
+	flightInput.Placeholder = "BA117"
+	flightInput.CharLimit = 16
+	flightInput.Width = 24
+	flightInput.Prompt = "> "
+	flightInput.Focus()
 
-	di := textinput.New()
-	di.Placeholder = "JFK"
-	di.CharLimit = 40
-	di.Width = 32
-	di.Prompt = "> "
+	destInput := textinput.New()
+	destInput.Placeholder = "JFK"
+	destInput.CharLimit = 40
+	destInput.Width = 32
+	destInput.Prompt = "> "
 
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(colAccent)
+	spin := spinner.New()
+	spin.Spinner = spinner.Dot
+	spin.Style = lipgloss.NewStyle().Foreground(colAccent)
 
 	hist, histPath, histWarning := loadHistory()
 
@@ -180,9 +180,9 @@ func newModel(refresh time.Duration, autoRefresh bool) model {
 		hist:        hist,
 		histPath:    histPath,
 		histWarning: histWarning,
-		flightInput: fi,
-		destInput:   di,
-		spin:        sp,
+		flightInput: flightInput,
+		destInput:   destInput,
+		spin:        spin,
 		now:         time.Now(),
 		notifyOn:    notify.Toast{}.Available(),
 		autoRefresh: autoRefresh,
@@ -208,18 +208,18 @@ func loadHistory() (*history.File, string, string) {
 // screen to open on.
 func (m *model) preseed(flight, origin, dest string) error {
 	if origin != "" {
-		a, ok := airports.Lookup(origin)
+		airport, ok := airports.Lookup(origin)
 		if !ok {
 			return fmt.Errorf("unknown airport code %q", origin)
 		}
-		m.origin = a
+		m.origin = airport
 	}
 	if dest != "" {
-		a, ok := airports.Lookup(dest)
+		airport, ok := airports.Lookup(dest)
 		if !ok {
 			return fmt.Errorf("unknown airport code %q", dest)
 		}
-		m.dest = a
+		m.dest = airport
 	}
 	if flight != "" {
 		id, err := opensky.ParseFlight(flight)

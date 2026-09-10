@@ -12,9 +12,9 @@ import (
 )
 
 func runHistory(args []string) int {
-	fs := flag.NewFlagSet("history", flag.ContinueOnError)
-	doClear := fs.Bool("clear", false, "delete the history file")
-	if err := fs.Parse(args); err != nil {
+	flags := flag.NewFlagSet("history", flag.ContinueOnError)
+	doClear := flags.Bool("clear", false, "delete the history file")
+	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 
@@ -33,26 +33,26 @@ func runHistory(args []string) int {
 		return 0
 	}
 
-	f, err := history.Load(path)
+	saved, err := history.Load(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 	}
 	fmt.Println(path)
-	if len(f.Entries) == 0 {
+	if len(saved.Entries) == 0 {
 		fmt.Println("(empty)")
 		return 0
 	}
 
 	now := time.Now()
-	for _, e := range f.Entries {
-		age, has := e.Age(now)
+	for _, entry := range saved.Entries {
+		age, hasPosition := entry.Age(now)
 		switch {
-		case !has:
-			fmt.Printf("  %-22s no cached position\n", e.Label())
-		case e.Usable(now):
-			fmt.Printf("  %-22s %s old (%s, reusable)\n", e.Label(), shortAge(age), history.Rate(age))
+		case !hasPosition:
+			fmt.Printf("  %-22s no cached position\n", entry.Label())
+		case entry.Usable(now):
+			fmt.Printf("  %-22s %s old (%s, reusable)\n", entry.Label(), shortAge(age), history.Rate(age))
 		default:
-			fmt.Printf("  %-22s %s old (stale, will refetch)\n", e.Label(), shortAge(age))
+			fmt.Printf("  %-22s %s old (stale, will refetch)\n", entry.Label(), shortAge(age))
 		}
 	}
 	return 0

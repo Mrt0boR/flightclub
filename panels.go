@@ -15,16 +15,16 @@ import (
 
 // flightPanel is the left-hand panel: where the aircraft is, and when it is
 // expected to arrive.
-func (m model) flightPanel(w int) string {
+func (m model) flightPanel(width int) string {
 	var b strings.Builder
 	// The heading is the number as typed; the callsign is only worth showing
 	// when the wire differs from it.
-	head := m.flightTyped
-	if head == "" {
-		head = m.flight.String()
+	heading := m.flightTyped
+	if heading == "" {
+		heading = m.flight.String()
 	}
-	b.WriteString(titleStyle.Render(head))
-	if m.obs != nil && m.obs.Callsign != "" && m.obs.Callsign != head {
+	b.WriteString(titleStyle.Render(heading))
+	if m.obs != nil && m.obs.Callsign != "" && m.obs.Callsign != heading {
 		b.WriteString(dimStyle.Render("   callsign " + m.obs.Callsign))
 	}
 	b.WriteString("\n\n")
@@ -36,7 +36,7 @@ func (m model) flightPanel(w int) string {
 	}
 
 	b.WriteString(m.aircraftLines())
-	b.WriteString("\n" + dimStyle.Render(strings.Repeat("-", w)) + "\n\n")
+	b.WriteString("\n" + dimStyle.Render(strings.Repeat("-", width)) + "\n\n")
 
 	if m.dest.IATA == "" {
 		b.WriteString(dimStyle.Render("No destination set. Press d.") + "\n")
@@ -46,7 +46,7 @@ func (m model) flightPanel(w int) string {
 
 	if !m.est.Valid {
 		b.WriteString("\n" + warnStyle.Render("No arrival estimate") + "\n")
-		b.WriteString(dimStyle.Render(wrap(m.est.Reason, w)) + "\n")
+		b.WriteString(dimStyle.Render(wrap(m.est.Reason, width)) + "\n")
 		if m.est.DistanceNM > 0 {
 			b.WriteString("\n" + labelStyle.Render("Distance") + fmt.Sprintf("%.0f nm", m.est.DistanceNM) + "\n")
 		}
@@ -55,15 +55,15 @@ func (m model) flightPanel(w int) string {
 
 	b.WriteString(m.arrivalLines())
 
-	if bar := m.progressSection(w); bar != "" {
+	if bar := m.progressSection(width); bar != "" {
 		b.WriteString(bar + "\n\n")
 	}
 
-	q := dimStyle
+	qualityStyle := dimStyle
 	if m.est.Quality == eta.Rough {
-		q = warnStyle
+		qualityStyle = warnStyle
 	}
-	b.WriteString(q.Render(fmt.Sprintf("[%s] %s", m.est.Quality, wrap(m.est.Reason, w))) + "\n")
+	b.WriteString(qualityStyle.Render(fmt.Sprintf("[%s] %s", m.est.Quality, wrap(m.est.Reason, width))) + "\n")
 	return b.String()
 }
 
@@ -85,10 +85,10 @@ func (m model) aircraftLines() string {
 	}
 	b.WriteString(labelStyle.Render("Ground speed") + fmt.Sprintf("%.0f kts", m.obs.SpeedKts()) + "\n")
 
-	if v := m.obs.ClimbFPM(); v > 100 {
-		b.WriteString(labelStyle.Render("Vertical") + fmt.Sprintf("climbing %.0f ft/min", v) + "\n")
-	} else if v < -100 {
-		b.WriteString(labelStyle.Render("Vertical") + fmt.Sprintf("descending %.0f ft/min", -v) + "\n")
+	if climbRate := m.obs.ClimbFPM(); climbRate > 100 {
+		b.WriteString(labelStyle.Render("Vertical") + fmt.Sprintf("climbing %.0f ft/min", climbRate) + "\n")
+	} else if climbRate < -100 {
+		b.WriteString(labelStyle.Render("Vertical") + fmt.Sprintf("descending %.0f ft/min", -climbRate) + "\n")
 	}
 	b.WriteString(labelStyle.Render("Track") + fmt.Sprintf("%.0f deg %s", m.obs.Track, eta.Compass(m.obs.Track)) + "\n")
 	return b.String()
@@ -102,38 +102,38 @@ func (m model) arrivalLines() string {
 	b.WriteString(labelStyle.Render("Distance") + fmt.Sprintf("%.0f nm, bearing %.0f %s",
 		m.est.DistanceNM, m.est.BearingDeg, eta.Compass(m.est.BearingDeg)) + "\n\n")
 
-	arr := m.est.ArrivalUTC
-	b.WriteString(labelStyle.Render("ETA (GMT)") + bigStyle.Render(arr.Format("15:04:05")) +
-		dimStyle.Render("  "+arr.Format("Mon 2 Jan")) + "\n")
-	b.WriteString(labelStyle.Render("ETA (local)") + arr.Local().Format("15:04:05 MST") + "\n\n")
+	arrival := m.est.ArrivalUTC
+	b.WriteString(labelStyle.Render("ETA (GMT)") + bigStyle.Render(arrival.Format("15:04:05")) +
+		dimStyle.Render("  "+arrival.Format("Mon 2 Jan")) + "\n")
+	b.WriteString(labelStyle.Render("ETA (local)") + arrival.Local().Format("15:04:05 MST") + "\n\n")
 
-	left := m.est.Countdown(m.now)
-	cd := bigStyle.Render(eta.FormatDuration(left))
-	if left < 0 {
-		cd = badStyle.Render(eta.FormatDuration(left))
-	} else if left < arrivalAlertAt {
-		cd = warnStyle.Render(eta.FormatDuration(left))
+	remaining := m.est.Countdown(m.now)
+	countdown := bigStyle.Render(eta.FormatDuration(remaining))
+	if remaining < 0 {
+		countdown = badStyle.Render(eta.FormatDuration(remaining))
+	} else if remaining < arrivalAlertAt {
+		countdown = warnStyle.Render(eta.FormatDuration(remaining))
 	}
-	b.WriteString(labelStyle.Render("Countdown") + cd + "\n\n")
+	b.WriteString(labelStyle.Render("Countdown") + countdown + "\n\n")
 	return b.String()
 }
 
 // progressSection draws the journey bar. With an origin it is true route
 // progress; without one it can only show how far the aircraft has come since
 // tracking started, which is labelled as such rather than passed off as more.
-func (m model) progressSection(w int) string {
-	frac, from, to, caption := 0.0, "", "", ""
+func (m model) progressSection(width int) string {
+	fraction, from, to, caption := 0.0, "", "", ""
 
 	switch {
 	case m.est.HasProgress:
-		frac = m.est.Progress
+		fraction = m.est.Progress
 		from, to = m.est.Origin.IATA, m.est.Destination.IATA
 		caption = fmt.Sprintf("%.0f nm flown of %.0f nm", m.est.TotalNM-m.est.DistanceNM, m.est.TotalNM)
 
 	case m.trackStartNM > 0 && m.est.DistanceNM > 0:
-		frac = (m.trackStartNM - m.est.DistanceNM) / m.trackStartNM
-		if frac < 0 {
-			frac = 0 // the aircraft has moved away from the destination
+		fraction = (m.trackStartNM - m.est.DistanceNM) / m.trackStartNM
+		if fraction < 0 {
+			fraction = 0 // the aircraft has moved away from the destination
 		}
 		from, to = "start", m.est.Destination.IATA
 		caption = "since tracking began - set an origin for true route progress"
@@ -144,22 +144,22 @@ func (m model) progressSection(w int) string {
 
 	// The label column, the two endpoint markers and the percentage all take
 	// space away from the bar itself.
-	barW := w - 14 - len(from) - len(to) - 8
-	if barW < 8 {
-		barW = 8
+	barWidth := width - 14 - len(from) - len(to) - 8
+	if barWidth < 8 {
+		barWidth = 8
 	}
-	filled := int(math.Round(frac * float64(barW)))
-	if filled > barW {
-		filled = barW
+	filled := int(math.Round(fraction * float64(barWidth)))
+	if filled > barWidth {
+		filled = barWidth
 	}
 
 	var b strings.Builder
 	b.WriteString(labelStyle.Render("Progress"))
 	b.WriteString(dimStyle.Render(from + " "))
 	b.WriteString(goodStyle.Render(strings.Repeat("=", filled)))
-	b.WriteString(dimStyle.Render(strings.Repeat(".", barW-filled)))
-	b.WriteString(dimStyle.Render(" "+to) + fmt.Sprintf("  %3.0f%%", frac*100))
-	b.WriteString("\n" + labelStyle.Render("") + dimStyle.Render(wrap(caption, w-14)))
+	b.WriteString(dimStyle.Render(strings.Repeat(".", barWidth-filled)))
+	b.WriteString(dimStyle.Render(" "+to) + fmt.Sprintf("  %3.0f%%", fraction*100))
+	b.WriteString("\n" + labelStyle.Render("") + dimStyle.Render(wrap(caption, width-14)))
 	return b.String()
 }
 
@@ -179,11 +179,11 @@ func (m model) menuPanel() string {
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("MENU") + "\n\n")
-	for i, it := range items {
+	for i, item := range items {
 		if i == m.menuIdx {
-			b.WriteString(selStyle.Render("> "+it) + "\n")
+			b.WriteString(selStyle.Render("> "+item) + "\n")
 		} else {
-			b.WriteString("  " + it + "\n")
+			b.WriteString("  " + item + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -191,7 +191,7 @@ func (m model) menuPanel() string {
 
 // infoPanel is the bottom of the right-hand column: how old the data is, what
 // it has cost, and recent events.
-func (m model) infoPanel(w int) string {
+func (m model) infoPanel(width int) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("INFO") + "\n\n")
 
@@ -202,12 +202,12 @@ func (m model) infoPanel(w int) string {
 	} else if m.snapFetched.IsZero() {
 		b.WriteString(dimStyle.Render("no data yet") + "\n")
 	} else {
-		age := m.now.Sub(m.snapFetched).Round(time.Second)
-		if age < 0 {
-			age = 0
+		dataAge := m.now.Sub(m.snapFetched).Round(time.Second)
+		if dataAge < 0 {
+			dataAge = 0
 		}
-		s := freshnessStyle(history.Rate(age))
-		b.WriteString(dimStyle.Render("data age   ") + s.Render(shortAge(age)))
+		ageStyle := freshnessStyle(history.Rate(dataAge))
+		b.WriteString(dimStyle.Render("data age   ") + ageStyle.Render(shortAge(dataAge)))
 		if m.fromCache {
 			b.WriteString(warnStyle.Render(" cached"))
 		}
@@ -215,33 +215,34 @@ func (m model) infoPanel(w int) string {
 	}
 
 	if m.autoRefresh {
-		in := m.nextRefresh.Sub(m.now).Round(time.Second)
-		if in < 0 {
-			in = 0
+		untilRefresh := m.nextRefresh.Sub(m.now).Round(time.Second)
+		if untilRefresh < 0 {
+			untilRefresh = 0
 		}
-		b.WriteString(dimStyle.Render("next auto  ") + in.String() + "\n")
+		b.WriteString(dimStyle.Render("next auto  ") + untilRefresh.String() + "\n")
 	} else {
 		b.WriteString(dimStyle.Render("next auto  off") + "\n")
 	}
 
 	b.WriteString(dimStyle.Render("api calls  ") +
 		fmt.Sprintf("%d credits / %d", m.client.CreditsUsed(), m.client.DailyCredits()) + "\n")
-	mode := "anonymous"
+	apiMode := "anonymous"
 	if m.client.Authenticated() {
-		mode = "authenticated"
+		apiMode = "authenticated"
 	}
-	b.WriteString(dimStyle.Render("api mode   ") + mode + "\n")
+	b.WriteString(dimStyle.Render("api mode   ") + apiMode + "\n")
 	b.WriteString(dimStyle.Render("clock      ") + m.now.UTC().Format("15:04:05") + " GMT" + "\n")
 
 	if m.errMsg != "" {
-		b.WriteString("\n" + badStyle.Render(wrap(m.errMsg, w)) + "\n")
+		b.WriteString("\n" + badStyle.Render(wrap(m.errMsg, width)) + "\n")
 	}
 
 	if len(m.logs) > 0 {
 		b.WriteString("\n" + titleStyle.Render("EVENTS") + "\n\n")
-		for _, l := range m.logs {
+		for _, entry := range m.logs {
 			// The timestamp takes 9 columns of the line.
-			b.WriteString(dimStyle.Render(l.at.Format("15:04:05")+" ") + l.tone.Render(trunc(l.text, w-9)) + "\n")
+			b.WriteString(dimStyle.Render(entry.at.Format("15:04:05")+" ") +
+				entry.tone.Render(trunc(entry.text, width-9)) + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

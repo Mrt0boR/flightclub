@@ -18,7 +18,7 @@ import (
 )
 
 func (m model) onHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	n := len(m.hist.Entries)
+	entryCount := len(m.hist.Entries)
 	switch msg.String() {
 	case "up", "k":
 		if m.histIdx > 0 {
@@ -26,7 +26,7 @@ func (m model) onHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "j":
-		if m.histIdx < n-1 {
+		if m.histIdx < entryCount-1 {
 			m.histIdx++
 		}
 		return m, nil
@@ -43,7 +43,7 @@ func (m model) onHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc":
 		return m, tea.Quit
 	case "enter", " ":
-		if n == 0 {
+		if entryCount == 0 {
 			return m.startNewSearch()
 		}
 		return m.resume(m.hist.Entries[m.histIdx])
@@ -61,20 +61,20 @@ func (m model) startNewSearch() (tea.Model, tea.Cmd) {
 // resume reopens a past search. If its stored position is still inside the
 // cache lifetime the dashboard opens on that, spending nothing; otherwise it
 // falls through to a normal fetch.
-func (m model) resume(e history.Entry) (tea.Model, tea.Cmd) {
-	id, err := opensky.ParseFlight(e.FlightID)
+func (m model) resume(entry history.Entry) (tea.Model, tea.Cmd) {
+	id, err := opensky.ParseFlight(entry.FlightID)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("stored entry %q is unusable: %v", e.FlightID, err)
+		m.errMsg = fmt.Sprintf("stored entry %q is unusable: %v", entry.FlightID, err)
 		return m, nil
 	}
 	m.flight = id
-	m.flightTyped = e.Flight
+	m.flightTyped = entry.Flight
 	m.origin, m.dest = airports.Airport{}, airports.Airport{}
-	if a, ok := airports.Lookup(e.Origin); ok {
-		m.origin = a
+	if airport, ok := airports.Lookup(entry.Origin); ok {
+		m.origin = airport
 	}
-	if a, ok := airports.Lookup(e.Dest); ok {
-		m.dest = a
+	if airport, ok := airports.Lookup(entry.Dest); ok {
+		m.dest = airport
 	}
 	m.trackStartNM = 0
 	m.arrivalAlerted = false
@@ -82,13 +82,13 @@ func (m model) resume(e history.Entry) (tea.Model, tea.Cmd) {
 	m.errMsg = ""
 
 	now := time.Now()
-	if obs := e.Observation(); obs != nil && e.Usable(now) && m.dest.IATA != "" {
-		age, _ := e.Age(now)
+	if obs := entry.Observation(); obs != nil && entry.Usable(now) && m.dest.IATA != "" {
+		age, _ := entry.Age(now)
 		m.obs = obs
-		m.snapFetched = e.Position.Fetched
-		m.snapTaken = e.Position.Fetched
+		m.snapFetched = entry.Position.Fetched
+		m.snapTaken = entry.Position.Fetched
 		m.fromCache = true
-		m.cacheAge = e.Position.Fetched
+		m.cacheAge = entry.Position.Fetched
 		onGround := obs.OnGround
 		m.prevOnGround = &onGround
 		m.recompute()
@@ -116,8 +116,8 @@ func (m model) viewHistory() string {
 	b.WriteString(dimStyle.Render("Previously searched") + "\n\n")
 
 	now := time.Now()
-	for i, e := range m.hist.Entries {
-		line := fmt.Sprintf("%-22s %s", e.Label(), freshnessNote(e, now))
+	for i, entry := range m.hist.Entries {
+		line := fmt.Sprintf("%-22s %s", entry.Label(), freshnessNote(entry, now))
 		if i == m.histIdx {
 			b.WriteString(selStyle.Render("> ") + line + "\n")
 		} else {
@@ -140,28 +140,28 @@ func (m model) viewHistory() string {
 
 // freshnessNote renders one entry's staleness: a three-block bar plus the age
 // and what will happen when it is opened.
-func freshnessNote(e history.Entry, now time.Time) string {
-	age, has := e.Age(now)
-	if !has {
+func freshnessNote(entry history.Entry, now time.Time) string {
+	age, hasPosition := entry.Age(now)
+	if !hasPosition {
 		return dimStyle.Render("---") + "  " + dimStyle.Render(fmt.Sprintf("%-8s no cached position", ""))
 	}
 
-	f := history.Rate(age)
-	s := freshnessStyle(f)
+	freshness := history.Rate(age)
+	ageStyle := freshnessStyle(freshness)
 
 	// Three blocks, filled according to how fresh the data is.
 	var bar string
-	switch f {
+	switch freshness {
 	case history.Fresh:
-		bar = s.Render("###")
+		bar = ageStyle.Render("###")
 	case history.Aging:
-		bar = s.Render("##") + dimStyle.Render("#")
+		bar = ageStyle.Render("##") + dimStyle.Render("#")
 	default:
-		bar = s.Render("#") + dimStyle.Render("##")
+		bar = ageStyle.Render("#") + dimStyle.Render("##")
 	}
 
-	note := s.Render(fmt.Sprintf("%-8s", shortAge(age)))
-	if f == history.Stale {
+	note := ageStyle.Render(fmt.Sprintf("%-8s", shortAge(age)))
+	if freshness == history.Stale {
 		note += dimStyle.Render(" will refetch")
 	} else {
 		note += dimStyle.Render(" cached")
