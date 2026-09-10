@@ -55,7 +55,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onKey(msg)
 	}
 
-	// Anything else goes to whichever text input is live.
+	return m.forwardToInput(msg)
+}
+
+// forwardToInput hands a message the loop above did not claim to whichever
+// text input is on screen. In practice this is the cursor blink, which
+// textinput drives with its own timer, so dropping these would leave the
+// cursor frozen.
+//
+// Note the assignment back onto m.flightInput: Bubble Tea components are
+// values rather than pointers, so Update returns a modified copy instead of
+// changing the original. Ignoring the return value silently loses the update.
+//
+// On the history list and the dashboard there is no input to feed, so cmd
+// stays nil, which is Bubble Tea's way of saying there is nothing to do.
+func (m model) forwardToInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.screen {
 	case screenFlight:
