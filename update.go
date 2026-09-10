@@ -1,0 +1,180 @@
+package main
+
+// The central message loop. Update sorts incoming messages, hands keystrokes
+// to whichever screen is showing, and owns the two things that span screens:
+// a new API snapshot arriving, and the arrival alert firing.
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"flighttrack/internal/eta"
+	"flighttrack/internal/notify"
+	"flighttrack/internal/opensky"
+)
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		return m, nil
+
+	case tickMsg:
+		m.now = time.Time(msg)
+		var cmds []tea.Cmd
+		cmds = append(cmds, tick())
+		if m.screen == screenDash && m.autoRefresh && !m.loading && m.now.After(m.nextRefresh) {
+			m.loading = true
+			m.nextRefresh = m.now.Add(m.refreshIn)
+			cmds = append(cmds, m.fetch())
+		}
+		if c := m.checkArrival(); c != nil {
+			cmds = append(cmds, c)
+		}
+		return m, tea.Batch(cmds...)
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spin, cmd = m.spin.Update(msg)
+		return m, cmd
+
+	case notifyDoneMsg:
+		if msg.err != nil {
+			m.logf(badStyle, "notify failed: %v", msg.err)
+		}
+		return m, nil
+
+	case snapshotMsg:
+		return m.onSnapshot(msg)
+
+	case tea.KeyMsg:
+		return m.onKey(msg)
+	}
+
+	// Anything else goes to whichever text input is live.
+	var cmd tea.Cmd
+	switch m.screen {
+	case screenFlight:
+		m.flightInput, cmd = m.flightInput.Update(msg)
+	case screenDest:
+		m.destInput, cmd = m.destInput.Update(msg)
+	}
+	return m, cmd
+}
+
+// onKey routes a keystroke to the screen that is showing.
+func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// ctrl+c always quits, whatever screen is up.
+	if msg.Type == tea.KeyCtrlC {
+		return m, tea.Quit
+	}
+
+	switch m.screen {
+	case screenHistory:
+		return m.onHistoryKey(msg)
+	case screenFlight:
+		return m.onFlightKey(msg)
+	case screenDest:
+		return m.onPickerKey(msg)
+	case screenDash:
+		return m.onDashKey(msg)
+	}
+	return m, nil
+}
+
+// onSnapshot folds a fresh API result into the model, raising takeoff and
+// landing events by comparing against the previous snapshot.
+func (m model) onSnapshot(msg snapshotMsg) (tea.Model, tea.Cmd) {
+	m.loading = false
+	if msg.err != nil {
+		m.errMsg = msg.err.Error()
+		m.logf(badStyle, "refresh failed: %v", msg.err)
+		return m, nil
+	}
+	m.errMsg = ""
+	m.snapTaken = msg.snap.Taken
+	m.snapFetched = msg.snap.Fetched
+	m.fromCache = false // this is live data now
+	m.nextRefresh = time.Now().Add(m.refreshIn)
+
+	obs, found := msg.snap.Lookup(m.flight)
+	if !found {
+		m.obs = nil
+		if m.screen == screenFlight {
+			m.errMsg = fmt.Sprintf("%s is not currently visible. It may not be airborne yet, or it is outside ADS-B coverage.", m.flight)
+			return m, nil
+		}
+		m.logf(warnStyle, "%s not in this snapshot", m.flight)
+		return m, nil
+	}
+
+	cmds := m.phaseChangeCmds(obs)
+
+	onGround := obs.OnGround
+	m.prevOnGround = &onGround
+	m.obs = obs
+
+	m.recompute()
+	if m.screen == screenFlight {
+		m.screen = screenDest
+		// Ask for the origin first, but only during initial setup and only if
+		// it was not already supplied on the command line.
+		m.pickOrigin = m.origin.IATA == "" && m.dest.IATA == ""
+		m.destInput.Focus()
+		m.logf(dimStyle, "found %s, %s", obs.Callsign, phaseWord(obs))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// phaseChangeCmds compares the new observation against the last one and
+// returns the notifications a takeoff or landing should raise. It mutates the
+// model's log and arrival flag, so it takes a pointer receiver.
+func (m *model) phaseChangeCmds(obs *opensky.Observation) []tea.Cmd {
+	if m.prevOnGround == nil || *m.prevOnGround == obs.OnGround {
+		return nil
+	}
+
+	var cmds []tea.Cmd
+	if *m.prevOnGround && !obs.OnGround {
+		m.logf(goodStyle, "%s has taken off", m.flight)
+		cmds = append(cmds, m.send(notify.Event{
+			Kind: "takeoff", Flight: m.flight.String(), Callsign: obs.Callsign,
+			Icao24: obs.Icao24, Time: time.Now(),
+			Title: fmt.Sprintf("%s has taken off", m.flight),
+			Body:  describe(obs),
+		}))
+	} else {
+		m.logf(goodStyle, "%s has landed", m.flight)
+		cmds = append(cmds, m.send(notify.Event{
+			Kind: "landing", Flight: m.flight.String(), Callsign: obs.Callsign,
+			Icao24: obs.Icao24, Time: time.Now(),
+			Title: fmt.Sprintf("%s has landed", m.flight),
+			Body:  describe(obs),
+		}))
+		m.arrivalAlerted = true // no point warning about an arrival now
+	}
+	return cmds
+}
+
+// checkArrival fires the approaching-arrival alert once per flight.
+func (m *model) checkArrival() tea.Cmd {
+	if m.arrivalAlerted || !m.est.Valid || m.obs == nil || m.obs.OnGround {
+		return nil
+	}
+	left := m.est.Countdown(m.now)
+	if left <= 0 || left > arrivalAlertAt {
+		return nil
+	}
+	m.arrivalAlerted = true
+	m.logf(warnStyle, "%s arriving in about %s", m.flight, eta.FormatDuration(left))
+	return m.send(notify.Event{
+		Kind: "arriving", Flight: m.flight.String(), Time: time.Now(),
+		Title: fmt.Sprintf("%s is arriving soon", m.flight),
+		Body: fmt.Sprintf("Estimated arrival at %s in about %s (%s GMT).",
+			m.dest.IATA, eta.FormatDuration(left), m.est.ArrivalUTC.Format("15:04")),
+	})
+}

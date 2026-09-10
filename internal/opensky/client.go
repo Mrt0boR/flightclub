@@ -15,8 +15,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,150 +31,6 @@ const (
 	// CreditsPerSnapshot is what OpenSky charges for an unfiltered /states/all.
 	CreditsPerSnapshot = 4
 )
-
-// ---------------------------------------------------------------- flight ids
-
-// Flights are quoted to passengers in IATA form (KL1234) but transmitted over
-// ADS-B as an ICAO callsign (KLM1234). This covers the common carriers;
-// anything else can be given as the 3-letter ICAO callsign directly.
-var iataToICAO = map[string]string{
-	"AA": "AAL", "AC": "ACA", "AF": "AFR", "AI": "AIC", "AM": "AMX",
-	"AS": "ASA", "AY": "FIN", "AZ": "ITY", "BA": "BAW", "BR": "EVA",
-	"CI": "CAL", "CX": "CPA", "CZ": "CSN", "DL": "DAL", "EI": "EIN",
-	"EK": "UAE", "ET": "ETH", "EW": "EWG", "EY": "ETD", "FR": "RYR",
-	"GA": "GIA", "HA": "HAL", "IB": "IBE", "JL": "JAL", "KE": "KAL",
-	"KL": "KLM", "LA": "LAN", "LH": "DLH", "LO": "LOT", "LX": "SWR",
-	"MH": "MAS", "MU": "CES", "NH": "ANA", "NZ": "ANZ", "OS": "AUA",
-	"PR": "PAL", "QF": "QFA", "QR": "QTR", "SK": "SAS", "SQ": "SIA",
-	"SU": "AFL", "SV": "SVA", "TG": "THA", "TK": "THY", "TP": "TAP",
-	"UA": "UAL", "UX": "AEA", "VA": "VOZ", "VS": "VIR", "WN": "SWA",
-	"WS": "WJA", "B6": "JBU", "F9": "FFT", "NK": "NKS", "U2": "EZY",
-	"W6": "WZZ", "VY": "VLG", "HV": "TRA", "DY": "NOZ", "D8": "IBK",
-	"PC": "PGT", "3U": "CSC", "6E": "IGO", "SG": "SEJ", "G9": "ABY",
-	"FZ": "FDB", "OU": "CTN", "A3": "AEE", "BT": "BTI", "JU": "ASL",
-	"RO": "ROT", "OK": "CSA", "SN": "BEL", "TO": "TVF", "LS": "EXS",
-	"X3": "TUI", "DE": "CFG", "EN": "DLA", "KM": "AMC", "ME": "MEA",
-}
-
-// AddAirline registers an extra IATA to ICAO mapping. It is not safe to call
-// concurrently with parsing, so callers should do it during startup.
-func AddAirline(iata, icao string) {
-	iataToICAO[strings.ToUpper(strings.TrimSpace(iata))] = strings.ToUpper(strings.TrimSpace(icao))
-}
-
-// prefix: 3-letter ICAO, or 2-char IATA (which may contain one digit).
-// The 2-char alternative is listed first so "AAL123" is not read as "AA" + "L123".
-var flightRe = regexp.MustCompile(`^(?:([A-Z][A-Z0-9]|[0-9][A-Z])|([A-Z]{3}))0*([0-9]{1,4})([A-Z]{0,2})$`)
-
-// maxFlightInput caps user input before it reaches the matcher.
-const maxFlightInput = 16
-
-// FlightID is a normalized flight number: an ICAO airline prefix plus the
-// numeric part with leading zeros stripped, so "BA117", "BAW117" and the
-// zero-padded "BAW0117" seen on the wire all compare equal.
-type FlightID struct {
-	Prefix string // ICAO airline designator, e.g. "BAW"
-	Number int
-	Suffix string // rare trailing letter, e.g. the "A" in "AAL123A"
-}
-
-func (f FlightID) String() string {
-	return fmt.Sprintf("%s%d%s", f.Prefix, f.Number, f.Suffix)
-}
-
-// IsZero reports whether the ID is unset.
-func (f FlightID) IsZero() bool { return f.Prefix == "" }
-
-// ParseFlight turns a flight number as printed on a ticket into a FlightID.
-func ParseFlight(s string) (FlightID, error) {
-	clean := strings.ToUpper(strings.TrimSpace(s))
-	if len(clean) > maxFlightInput {
-		return FlightID{}, fmt.Errorf("flight number %q is too long", s)
-	}
-	clean = strings.NewReplacer(" ", "", "-", "", "/", "").Replace(clean)
-	m := flightRe.FindStringSubmatch(clean)
-	if m == nil {
-		return FlightID{}, fmt.Errorf("cannot read %q as a flight number (expected something like KL1234)", s)
-	}
-	prefix := m[2] // ICAO branch
-	if m[1] != "" {
-		icao, ok := iataToICAO[m[1]]
-		if !ok {
-			return FlightID{}, fmt.Errorf("airline code %q is not in the table: enter the 3-letter ICAO callsign instead, e.g. KLM1234", m[1])
-		}
-		prefix = icao
-	}
-	n, err := strconv.Atoi(m[3])
-	if err != nil {
-		return FlightID{}, fmt.Errorf("bad flight number in %q: %w", s, err)
-	}
-	return FlightID{Prefix: prefix, Number: n, Suffix: m[4]}, nil
-}
-
-// ParseCallsign reads a callsign off the wire. Unlike ParseFlight it never
-// consults the IATA table: transmitted callsigns are always ICAO form, and
-// guessing otherwise would create false matches.
-func ParseCallsign(s string) (FlightID, bool) {
-	clean := strings.ToUpper(strings.TrimSpace(s))
-	if len(clean) < 4 || len(clean) > maxFlightInput {
-		return FlightID{}, false
-	}
-	m := flightRe.FindStringSubmatch(clean)
-	if m == nil || m[2] == "" {
-		return FlightID{}, false
-	}
-	n, err := strconv.Atoi(m[3])
-	if err != nil {
-		return FlightID{}, false
-	}
-	return FlightID{Prefix: m[2], Number: n, Suffix: m[4]}, true
-}
-
-// ------------------------------------------------------------- observations
-
-// Observation is one aircraft as OpenSky last saw it.
-type Observation struct {
-	Icao24   string
-	Callsign string
-	Lat, Lon float64
-	BaroAlt  float64 // metres
-	GeoAlt   float64 // metres
-	OnGround bool
-	Velocity float64 // m/s over the ground
-	Track    float64 // degrees true
-	VertRate float64 // m/s, positive is climbing
-	Country  string  // registration country
-	HasPos   bool
-	Seen     time.Time // when OpenSky produced this snapshot
-}
-
-// SpeedKts returns ground speed in knots.
-func (o Observation) SpeedKts() float64 { return o.Velocity * 1.94384 }
-
-// AltitudeFt returns altitude in feet.
-func (o Observation) AltitudeFt() float64 { return o.GeoAlt * 3.28084 }
-
-// ClimbFPM returns vertical rate in feet per minute.
-func (o Observation) ClimbFPM() float64 { return o.VertRate * 196.85 }
-
-// Snapshot is one complete read of the sky.
-type Snapshot struct {
-	Taken    time.Time // OpenSky's own timestamp for the data
-	Fetched  time.Time // when this process received it
-	Aircraft map[FlightID]*Observation
-	Total    int // aircraft in the feed, including ones with no usable callsign
-}
-
-// Age reports how long ago the snapshot was fetched.
-func (s Snapshot) Age() time.Duration { return time.Since(s.Fetched) }
-
-// Lookup finds one flight in the snapshot.
-func (s Snapshot) Lookup(id FlightID) (*Observation, bool) {
-	o, ok := s.Aircraft[id]
-	return o, ok
-}
-
-// ------------------------------------------------------------------- client
 
 // Client talks to OpenSky. The zero value is not usable; call New.
 type Client struct {
@@ -366,17 +220,6 @@ func (c *Client) Fetch(ctx context.Context) (*Snapshot, error) {
 		snap.Aircraft[id] = obs
 	}
 	return snap, nil
-}
-
-// better reports whether a is a more trustworthy record of a flight than b.
-func better(a, b *Observation) bool {
-	if a.HasPos != b.HasPos {
-		return a.HasPos
-	}
-	if a.OnGround != b.OnGround {
-		return !a.OnGround
-	}
-	return a.Seen.After(b.Seen)
 }
 
 func rawString(r json.RawMessage) string {
