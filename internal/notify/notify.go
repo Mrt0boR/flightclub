@@ -125,9 +125,23 @@ type Webhook struct {
 // NewWebhook validates the URL before accepting it. Plain HTTP is refused
 // except to loopback, so an event never crosses a network in the clear.
 func NewWebhook(raw string) (*Webhook, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
+	u, err := secureURL(raw)
 	if err != nil {
 		return nil, fmt.Errorf("webhook URL is not valid: %w", err)
+	}
+	return &Webhook{
+		URL:    u.String(),
+		client: &http.Client{Timeout: 20 * time.Second},
+	}, nil
+}
+
+// secureURL parses raw and enforces the transport rule shared by every HTTP
+// notifier: https everywhere, plain http only to loopback, and a host must be
+// present. Both NewWebhook and NewNtfy rely on it so the rule stays in one place.
+func secureURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, err
 	}
 	switch u.Scheme {
 	case "https":
@@ -137,15 +151,12 @@ func NewWebhook(raw string) (*Webhook, error) {
 			return nil, errors.New("refusing plain http to a non-local address: use https")
 		}
 	default:
-		return nil, fmt.Errorf("webhook URL must be https, got %q", u.Scheme)
+		return nil, fmt.Errorf("URL must be https, got %q", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, errors.New("webhook URL has no host")
+		return nil, errors.New("URL has no host")
 	}
-	return &Webhook{
-		URL:    u.String(),
-		client: &http.Client{Timeout: 20 * time.Second},
-	}, nil
+	return u, nil
 }
 
 func (*Webhook) Name() string { return "webhook" }

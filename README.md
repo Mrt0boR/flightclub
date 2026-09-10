@@ -121,6 +121,7 @@ The same starting point can be given on the command line:
 | `-refresh` | `5m` | How often to auto-refresh (minimum `1m`) |
 | `-no-auto-refresh` | off | Start with auto-refresh disabled |
 | `-webhook` | — | HTTPS URL to POST takeoff and landing events to |
+| `-ntfy` | — | ntfy topic URL for phone push, e.g. `https://ntfy.sh/my-topic` |
 
 Once the dashboard is open:
 
@@ -151,8 +152,9 @@ flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
 | --- | --- | --- |
 | `-flights` | required | Comma-separated flight numbers |
 | `-interval` | `90s` | How often to poll OpenSky |
-| `-notify` | `console` | Comma-separated: `console`, `desktop`, `webhook` |
+| `-notify` | `console` | Comma-separated: `console`, `desktop`, `webhook`, `ntfy` |
 | `-webhook-url` | — | HTTPS endpoint to POST events to |
+| `-ntfy-url` | — | ntfy topic URL, e.g. `https://ntfy.sh/my-topic` |
 | `-confirm` | `2` | Consecutive polls a change must hold before it is reported |
 | `-lost-after` | `25m` | Report a loss of contact after this long with no data |
 | `-state-file` | `flighttrack-watch-state.json` | Where flight phases are persisted across restarts |
@@ -160,6 +162,28 @@ flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
 
 Webhooks receive the full event as JSON. Plain HTTP is refused to anything but
 loopback, so events never cross a network in the clear.
+
+### Phone notifications
+
+The `ntfy` sink turns events into push notifications on your phone through
+[ntfy.sh](https://ntfy.sh), which is free and needs no account.
+
+1. Install the ntfy app (iOS or Android, both free).
+2. Pick a long, unguessable topic name and subscribe to it in the app — the
+   topic name is the only thing protecting your flight data, so make it random,
+   not `james-flights`.
+3. Point flighttrack at the same topic:
+
+```powershell
+flighttrack -flight QF2 -to LHR -ntfy https://ntfy.sh/flighttrack-7Xq2p9m4kZ
+flighttrack watch -flights QF2,CX251 -notify console,ntfy -ntfy-url https://ntfy.sh/flighttrack-7Xq2p9m4kZ
+```
+
+Takeoffs and landings arrive as titled notifications with a priority that lifts
+signal-lost and arriving-soon alerts through Do Not Disturb. For a reserved
+topic or a self-hosted server with access control, set an access token in
+`FLIGHTTRACK_NTFY_TOKEN` — it is read from the environment only, never a flag.
+The topic URL can also come from `FLIGHTTRACK_NTFY`.
 
 ## API credentials
 

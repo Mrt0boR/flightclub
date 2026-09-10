@@ -29,6 +29,7 @@ type Config struct {
 	Refresh     time.Duration
 	AutoRefresh bool
 	WebhookURL  string // optional https endpoint for events
+	NtfyURL     string // optional ntfy topic URL for phone push (token from FLIGHTTRACK_NTFY_TOKEN)
 	Dev         bool   // seed a fake flight and enable the landing simulator
 }
 
@@ -43,6 +44,13 @@ func Run(cfg Config) error {
 			return fmt.Errorf("webhook: %w", err)
 		}
 		m.webhook = hook
+	}
+	if cfg.NtfyURL != "" {
+		n, err := notify.NewNtfy(cfg.NtfyURL, os.Getenv("FLIGHTTRACK_NTFY_TOKEN"))
+		if err != nil {
+			return fmt.Errorf("ntfy: %w", err)
+		}
+		m.ntfy = n
 	}
 	if cfg.Dev {
 		m.seedDevFlight()

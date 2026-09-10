@@ -34,8 +34,9 @@ func Run(args []string) int {
 	var (
 		flightList   = flags.String("flights", "", "comma-separated flight numbers, e.g. KL1234,BA117 (required)")
 		pollEvery    = flags.Duration("interval", 90*time.Second, "how often to poll OpenSky")
-		notifierList = flags.String("notify", "console", "comma-separated: console, desktop, webhook")
+		notifierList = flags.String("notify", "console", "comma-separated: console, desktop, webhook, ntfy")
 		webhookURL   = flags.String("webhook-url", os.Getenv("FLIGHTTRACK_WEBHOOK"), "https URL to POST events to")
+		ntfyURL      = flags.String("ntfy-url", os.Getenv("FLIGHTTRACK_NTFY"), "ntfy topic URL, e.g. https://ntfy.sh/my-topic (token from FLIGHTTRACK_NTFY_TOKEN)")
 		confirmPolls = flags.Int("confirm", 2, "consecutive polls a state change must hold before it is reported")
 		lostAfter    = flags.Duration("lost-after", 25*time.Minute, "report a loss of contact after this long with no data")
 		stateFile    = flags.String("state-file", "flighttrack-watch-state.json", "where to persist flight phases across restarts")
@@ -57,7 +58,7 @@ func Run(args []string) int {
 		return 2
 	}
 
-	notifiers, err := buildNotifiers(*notifierList, *webhookURL)
+	notifiers, err := buildNotifiers(*notifierList, *webhookURL, *ntfyURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 2
@@ -162,7 +163,7 @@ func parseTargets(flightList string) ([]opensky.FlightID, error) {
 }
 
 // buildNotifiers turns the -notify list into a set of delivery targets.
-func buildNotifiers(notifierList, webhookURL string) (*notify.Set, error) {
+func buildNotifiers(notifierList, webhookURL, ntfyURL string) (*notify.Set, error) {
 	notifiers := notify.NewSet()
 	for _, name := range strings.Split(notifierList, ",") {
 		switch strings.TrimSpace(strings.ToLower(name)) {
@@ -181,6 +182,12 @@ func buildNotifiers(notifierList, webhookURL string) (*notify.Set, error) {
 				return nil, err
 			}
 			notifiers.Add(hook)
+		case "ntfy":
+			n, err := notify.NewNtfy(ntfyURL, os.Getenv("FLIGHTTRACK_NTFY_TOKEN"))
+			if err != nil {
+				return nil, err
+			}
+			notifiers.Add(n)
 		default:
 			return nil, fmt.Errorf("unknown notifier %q", strings.TrimSpace(name))
 		}
