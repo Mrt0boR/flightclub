@@ -1,9 +1,9 @@
 # flighttrack
 
-A terminal flight tracker. Enter the flight number from your ticket and it
-shows you where the aircraft is, an estimated arrival time in GMT, and a live
-countdown — or watches quietly in the background and tells you when a flight
-takes off or lands.
+A terminal flight tracker. Give it the flight number from your ticket and it
+finds the aircraft, shows where it is, estimates an arrival time in GMT, and
+counts down to it — or, in watch mode, sits quietly in the background and tells
+you when a flight takes off or lands.
 
 Data comes from the [OpenSky Network](https://opensky-network.org), which is
 free and open. No account is required to start.
@@ -30,9 +30,8 @@ free and open. No account is required to start.
 
 ## Requirements
 
-- Windows 10 or 11 (desktop notifications are Windows-only; everything else is
-  cross-platform)
-- [Go](https://go.dev/dl/) 1.21 or newer, to build it
+- Windows 10 or 11 for desktop notifications; everything else is cross-platform.
+- [Go](https://go.dev/dl/) 1.24 or newer, to build it.
 
 ## Install
 
@@ -44,17 +43,20 @@ From the project folder, in any terminal:
 .\install.ps1
 ```
 
-It builds the binary, copies it to `%LOCALAPPDATA%\Programs\flighttrack`, and
-adds that folder to your **user** PATH. No administrator rights are needed and
-the machine-wide PATH is not touched. Open a new terminal afterwards so the
-PATH change takes effect.
+The script builds the binary, copies it to
+`%LOCALAPPDATA%\Programs\flighttrack`, and adds that folder to your **user**
+PATH. No administrator rights are needed and the machine-wide PATH is left
+alone. Open a new terminal afterwards for the PATH change to take effect.
 
-If PowerShell refuses to run the script, it is your execution policy. This
-allows local scripts for your account only:
+If PowerShell refuses to run the script, the cause is your execution policy.
+This allows local scripts for your account only:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+Other flags: `-NoPath` installs without touching PATH; `-Update` and
+`-Uninstall` are covered below.
 
 ### By hand
 
@@ -62,9 +64,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 go build -o flighttrack.exe ./cmd/flighttrack
 ```
 
-Then run `.\flighttrack.exe` from this folder, or copy the `.exe` anywhere on
-your PATH. It is a single self-contained binary — the airport database is
-compiled into it, so there are no data files to keep alongside it.
+Run `.\flighttrack.exe` from this folder, or copy the `.exe` anywhere on your
+PATH. It is a single self-contained binary — the airport database is compiled
+in, so there are no data files to keep next to it.
 
 ### Update
 
@@ -72,14 +74,14 @@ compiled into it, so there are no data files to keep alongside it.
 .\install.ps1 -Update
 ```
 
-Pulls the latest source, rebuilds, and replaces the installed binary. It
+This pulls the latest source, rebuilds, and replaces the installed binary. It
 refuses if you have uncommitted changes in the source folder.
 
-The dashboard checks GitHub for a newer release at most once a day, caches the
-answer, and fails silently if there is no network. When there is one, it shows
-a single line in the INFO panel — it never downloads anything or interrupts
-you. `flighttrack version` runs the same check on demand. Builds made without
-the install script report as `dev` and never check.
+Separately, the dashboard checks GitHub for a newer release at most once a day,
+caches the answer, and fails silently with no network. When an update exists it
+shows a single line in the INFO panel; it never downloads anything or
+interrupts you. `flighttrack version` runs the same check on demand. Builds
+made without the install script report as `dev` and never check.
 
 ### Uninstall
 
@@ -93,26 +95,38 @@ Add `-Purge` to also delete your saved search history.
 
 ```powershell
 flighttrack                                   # dashboard, with saved searches
-flighttrack -flight QF2 -from SYD -to LHR     # straight to the dashboard
-flighttrack watch -flights QF2,CX251          # background, no interface
-flighttrack history                           # show what is saved
-flighttrack version                           # build, and whether it is current
-flighttrack help                              # everything
+flighttrack -flight QF2 -from SYD -to LHR      # dashboard, preseeded
+flighttrack watch -flights QF2,CX251           # background, no interface
+flighttrack history                            # show saved searches
+flighttrack version                            # build, and whether it is current
+flighttrack help                               # full option list
 ```
 
 ### Dashboard
 
 On launch you get your recent searches, colour-coded by how fresh the saved
-position is — green under 10 minutes, amber under an hour, red older than that.
-Pick one and it opens instantly on cached data if it is still usable; otherwise
-it fetches. Press `n` for a new search.
+position is: green under 10 minutes, amber under an hour, red beyond that. Pick
+one and it opens straight away on cached data if that is still usable,
+otherwise it fetches. Press `n` to start a new search, which asks for the
+flight number, then the origin (optional — press Enter to skip), then the
+destination.
 
-A new search asks for the flight number, then the origin (optional — press
-Enter to skip), then the destination.
+The same starting point can be given on the command line:
+
+| Flag | Default | Does |
+| --- | --- | --- |
+| `-flight` | — | Flight number to open on, e.g. `BA117` |
+| `-from` | — | Origin airport code; enables the route progress bar |
+| `-to` | — | Destination airport code |
+| `-refresh` | `5m` | How often to auto-refresh (minimum `1m`) |
+| `-no-auto-refresh` | off | Start with auto-refresh disabled |
+| `-webhook` | — | HTTPS URL to POST takeoff and landing events to |
+
+Once the dashboard is open:
 
 | Key | Does |
 | --- | --- |
-| `r` | Refresh now (costs 4 API credits) |
+| `r` | Refresh now (uses 4 API credits) |
 | `n` | Toggle desktop notifications |
 | `a` | Toggle auto-refresh |
 | `o` | Set or change the origin |
@@ -121,12 +135,13 @@ Enter to skip), then the destination.
 | `q` | Quit |
 
 The countdown ticks every second off your system clock and touches no network.
-Only `r` and the 5-minute auto-refresh cost anything, and the INFO panel shows
-your running credit total.
+Only `r` and the auto-refresh spend API credits, and the INFO panel shows your
+running total.
 
 ### Watch mode
 
-No interface. Give it several flights and it reports takeoffs and landings.
+No interface. Give it several flights and it reports their takeoffs and
+landings.
 
 ```powershell
 flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
@@ -135,10 +150,12 @@ flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
 | Flag | Default | Does |
 | --- | --- | --- |
 | `-flights` | required | Comma-separated flight numbers |
-| `-interval` | `90s` | How often to poll |
-| `-notify` | `console` | `console`, `desktop`, `webhook` |
+| `-interval` | `90s` | How often to poll OpenSky |
+| `-notify` | `console` | Comma-separated: `console`, `desktop`, `webhook` |
 | `-webhook-url` | — | HTTPS endpoint to POST events to |
-| `-confirm` | `2` | Polls a change must hold before it is reported |
+| `-confirm` | `2` | Consecutive polls a change must hold before it is reported |
+| `-lost-after` | `25m` | Report a loss of contact after this long with no data |
+| `-state-file` | `flighttrack-watch-state.json` | Where flight phases are persisted across restarts |
 | `-once` | off | Poll once and exit |
 
 Webhooks receive the full event as JSON. Plain HTTP is refused to anything but
@@ -156,8 +173,8 @@ setx OPENSKY_CLIENT_ID "your-id"
 setx OPENSKY_CLIENT_SECRET "your-secret"
 ```
 
-Open a new terminal afterwards. Credentials are read from the environment only
-— they are never written to disk by this app.
+Open a new terminal afterwards. Credentials are read from the environment only;
+this app never writes them to disk.
 
 ## Where your data lives
 
@@ -167,7 +184,7 @@ Open a new terminal afterwards. Credentials are read from the environment only
 | Watch-mode flight states | `flighttrack-watch-state.json` in the working directory |
 
 The history keeps your five most recent searches. `flighttrack history` prints
-it, `flighttrack history -clear` deletes it.
+it; `flighttrack history -clear` deletes it.
 
 ## What it cannot do
 
@@ -178,7 +195,7 @@ a position, and nothing else — no route, no schedule, no destination. That is
 why you type the destination yourself, and why there is no way to search for
 "flights from DUB to LHR".
 
-**The ETA is a straight-line estimate.** Great-circle distance to the
+**The ETA is a straight-line estimate.** It is the great-circle distance to the
 destination divided by current ground speed. It ignores winds, filed routing,
 ATC vectoring, holding and the approach, so it reads optimistic — most
 noticeably in the last hour. The dashboard labels it `[fair]` in cruise and
@@ -187,27 +204,31 @@ not a promise.
 
 **A flight has to be airborne and in coverage to be found.** ADS-B is
 crowd-sourced, with real gaps over oceans, at low altitude, and anywhere
-receiver coverage is thin. A flight that has not pushed back will not appear at
+receiver coverage is thin. A flight that has not pushed back does not appear at
 all. When contact is lost mid-flight, watch mode says exactly that rather than
 guessing that it landed.
 
 **Progress needs an origin.** Without one the app can only show how far the
-aircraft has come since you started watching, and it says so on the bar instead
-of dressing it up as route progress.
+aircraft has come since you started watching, and it says so on the bar
+instead of dressing it up as route progress.
 
 ## Building
 
 ```powershell
 go build -o flighttrack.exe ./cmd/flighttrack   # build
-go test ./...                   # tests
-go vet ./...                    # vet
+go test ./...                                    # tests
+go vet ./...                                     # vet
 ```
 
-To see every screen render without launching the app:
+To render every screen without launching the app:
 
 ```powershell
 go test -run TestPreviewRender -v ./internal/ui/
 ```
+
+`flighttrack -dev` opens the dashboard on a fake flight without touching the
+API; pressing `ctrl+t` then simulates its landing, which is the way to test
+that notifications fire.
 
 ### Regenerating the airport table
 
@@ -224,7 +245,7 @@ The CSV is not needed afterwards. Tests check known coordinates and route
 distances, so a bad regeneration fails loudly rather than quietly producing
 wrong ETAs.
 
-## Layout
+### Layout
 
 ```
 cmd/flighttrack/           the command line: dispatch, flags, help
@@ -242,5 +263,5 @@ internal/version/          build stamp and the GitHub release check
 
 Inside `internal/ui`, each screen keeps its key handling and its rendering in
 one file (`screen_history.go`, `screen_flight.go`, `screen_airport.go`,
-`screen_dashboard.go`), with `model.go` holding the state they all share and
+`screen_dashboard.go`), with `model.go` holding the shared state and
 `update.go` routing messages between them.
