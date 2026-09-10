@@ -1,0 +1,10 @@
+# Built binaries
+*.exe
+
+# Runtime state written by watch mode
+flighttrack-watch-state.json
+*.tmp
+
+# Downloaded source data for the airport table generator. The generated
+# internal/airports/data_gen.go IS committed; the 12 MB CSV it came from is not.
+airports.csv
