@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The dashboard: the menu on the right, its keyboard shortcuts, and the
 // two-panel layout. The panels themselves are drawn in panels.go.

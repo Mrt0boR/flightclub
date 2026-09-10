@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"strings"
@@ -370,27 +370,6 @@ func TestArrivalAlertFiresOnce(t *testing.T) {
 	m.checkArrival()
 	if len(m.logs) != before {
 		t.Error("the arrival alert fired twice")
-	}
-}
-
-func TestWrap(t *testing.T) {
-	got := wrap("the quick brown fox jumps", 10)
-	for _, line := range strings.Split(got, "\n") {
-		if len(line) > 10 {
-			t.Errorf("line %q exceeds width 10", line)
-		}
-	}
-	if wrap("", 10) != "" {
-		t.Error("wrapping empty text should give empty text")
-	}
-}
-
-func TestTrunc(t *testing.T) {
-	if got := trunc("abcdefgh", 4); len(got) != 4 {
-		t.Errorf("trunc to 4 gave %q", got)
-	}
-	if got := trunc("abc", 10); got != "abc" {
-		t.Errorf("short strings should pass through, got %q", got)
 	}
 }
 

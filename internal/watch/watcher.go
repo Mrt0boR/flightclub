@@ -1,4 +1,4 @@
-package main
+package watch
 
 // The polling engine behind watch mode. It holds one flightState per tracked
 // flight and reports the moments that matter: a takeoff, a landing, or a loss
@@ -187,15 +187,15 @@ func phaseEvent(state *flightState, obs *opensky.Observation, prevPhase, nextPha
 	case prevPhase == phaseGround && nextPhase == phaseAir:
 		event.Kind = "takeoff"
 		event.Title = fmt.Sprintf("%s has taken off", state.Flight)
-		event.Body = fmt.Sprintf("Airborne at %s. %s", now.Local().Format("15:04:05 MST"), describe(obs))
+		event.Body = fmt.Sprintf("Airborne at %s. %s", now.Local().Format("15:04:05 MST"), obs.Describe())
 	case prevPhase == phaseAir && nextPhase == phaseGround:
 		event.Kind = "landing"
 		event.Title = fmt.Sprintf("%s has landed", state.Flight)
-		event.Body = fmt.Sprintf("On the ground at %s. %s", now.Local().Format("15:04:05 MST"), describe(obs))
+		event.Body = fmt.Sprintf("On the ground at %s. %s", now.Local().Format("15:04:05 MST"), obs.Describe())
 	default:
 		event.Kind = "tracking"
 		event.Title = fmt.Sprintf("%s: now tracking", state.Flight)
-		event.Body = fmt.Sprintf("Picked up %s, currently %s. %s", obs.Callsign, nextPhase, describe(obs))
+		event.Body = fmt.Sprintf("Picked up %s, currently %s. %s", obs.Callsign, nextPhase, obs.Describe())
 	}
 	return event
 }

@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The airport picker. One screen serves both the origin and the destination;
 // m.pickOrigin decides which is being chosen, since the two differ only in

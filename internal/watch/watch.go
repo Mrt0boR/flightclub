@@ -1,4 +1,4 @@
-package main
+package watch
 
 // The `flighttrack watch` subcommand: argument handling and the polling loop.
 // The state machine it drives lives in watcher.go.
@@ -21,7 +21,7 @@ import (
 
 // runWatch returns a process exit code rather than calling os.Exit, so main
 // stays in charge of shutdown.
-func runWatch(args []string) int {
+func Run(args []string) int {
 	log.SetFlags(log.Ltime)
 
 	flags := flag.NewFlagSet("watch", flag.ContinueOnError)

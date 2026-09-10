@@ -59,7 +59,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ### By hand
 
 ```powershell
-go build -o flighttrack.exe .
+go build -o flighttrack.exe ./cmd/flighttrack
 ```
 
 Then run `.\flighttrack.exe` from this folder, or copy the `.exe` anywhere on
@@ -182,7 +182,7 @@ of dressing it up as route progress.
 ## Building
 
 ```powershell
-go build -o flighttrack.exe .   # build
+go build -o flighttrack.exe ./cmd/flighttrack   # build
 go test ./...                   # tests
 go vet ./...                    # vet
 ```
@@ -190,7 +190,7 @@ go vet ./...                    # vet
 To see every screen render without launching the app:
 
 ```powershell
-go test -run TestPreviewRender -v .
+go test -run TestPreviewRender -v ./internal/ui/
 ```
 
 ### Regenerating the airport table
@@ -211,12 +211,19 @@ wrong ETAs.
 ## Layout
 
 ```
-main.go                    dashboard UI
-watch.go                   background watch mode
+cmd/flighttrack/           the command line: dispatch, flags, help
+cmd/genairports/           airport table generator
+internal/ui/               the dashboard (model, update, screens, panels)
+internal/watch/            background watch mode
 internal/opensky/          API client, flight-number matching
 internal/eta/              great-circle maths, arrival estimates
 internal/airports/         embedded airport table
 internal/history/          saved searches and position cache
 internal/notify/           desktop and webhook notifications
-cmd/genairports/           airport table generator
+internal/textfmt/          shared text helpers
 ```
+
+Inside `internal/ui`, each screen keeps its key handling and its rendering in
+one file (`screen_history.go`, `screen_flight.go`, `screen_airport.go`,
+`screen_dashboard.go`), with `model.go` holding the state they all share and
+`update.go` routing messages between them.

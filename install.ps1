@@ -140,7 +140,7 @@ if ($goExe) {
     Write-Step "Building with $goExe"
     Push-Location $SourceDir
     try {
-        & $goExe build -o $ExeName .
+        & $goExe build -o $ExeName ./cmd/flighttrack
         if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
         Write-Good "Built $ExeName"
     } finally {

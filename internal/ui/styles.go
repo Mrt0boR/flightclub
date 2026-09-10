@@ -1,4 +1,4 @@
-package main
+package ui
 
 // Colours and text styles for the whole interface. Everything visual is
 // defined here so a change lands in one place rather than scattered through

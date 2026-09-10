@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The dashboard's three panels. Each takes the column width it has to fit
 // into and returns plain text; the borders are added by viewDash.
@@ -11,6 +11,7 @@ import (
 
 	"flighttrack/internal/eta"
 	"flighttrack/internal/history"
+	"flighttrack/internal/textfmt"
 )
 
 // flightPanel is the left-hand panel: where the aircraft is, and when it is
@@ -46,7 +47,7 @@ func (m model) flightPanel(width int) string {
 
 	if !m.est.Valid {
 		b.WriteString("\n" + warnStyle.Render("No arrival estimate") + "\n")
-		b.WriteString(dimStyle.Render(wrap(m.est.Reason, width)) + "\n")
+		b.WriteString(dimStyle.Render(textfmt.Wrap(m.est.Reason, width)) + "\n")
 		if m.est.DistanceNM > 0 {
 			b.WriteString("\n" + labelStyle.Render("Distance") + fmt.Sprintf("%.0f nm", m.est.DistanceNM) + "\n")
 		}
@@ -63,7 +64,7 @@ func (m model) flightPanel(width int) string {
 	if m.est.Quality == eta.Rough {
 		qualityStyle = warnStyle
 	}
-	b.WriteString(qualityStyle.Render(fmt.Sprintf("[%s] %s", m.est.Quality, wrap(m.est.Reason, width))) + "\n")
+	b.WriteString(qualityStyle.Render(fmt.Sprintf("[%s] %s", m.est.Quality, textfmt.Wrap(m.est.Reason, width))) + "\n")
 	return b.String()
 }
 
@@ -159,7 +160,7 @@ func (m model) progressSection(width int) string {
 	b.WriteString(goodStyle.Render(strings.Repeat("=", filled)))
 	b.WriteString(dimStyle.Render(strings.Repeat(".", barWidth-filled)))
 	b.WriteString(dimStyle.Render(" "+to) + fmt.Sprintf("  %3.0f%%", fraction*100))
-	b.WriteString("\n" + labelStyle.Render("") + dimStyle.Render(wrap(caption, width-14)))
+	b.WriteString("\n" + labelStyle.Render("") + dimStyle.Render(textfmt.Wrap(caption, width-14)))
 	return b.String()
 }
 
@@ -207,7 +208,7 @@ func (m model) infoPanel(width int) string {
 			dataAge = 0
 		}
 		ageStyle := freshnessStyle(history.Rate(dataAge))
-		b.WriteString(dimStyle.Render("data age   ") + ageStyle.Render(shortAge(dataAge)))
+		b.WriteString(dimStyle.Render("data age   ") + ageStyle.Render(textfmt.ShortAge(dataAge)))
 		if m.fromCache {
 			b.WriteString(warnStyle.Render(" cached"))
 		}
@@ -234,7 +235,7 @@ func (m model) infoPanel(width int) string {
 	b.WriteString(dimStyle.Render("clock      ") + m.now.UTC().Format("15:04:05") + " GMT" + "\n")
 
 	if m.errMsg != "" {
-		b.WriteString("\n" + badStyle.Render(wrap(m.errMsg, width)) + "\n")
+		b.WriteString("\n" + badStyle.Render(textfmt.Wrap(m.errMsg, width)) + "\n")
 	}
 
 	if len(m.logs) > 0 {
@@ -242,7 +243,7 @@ func (m model) infoPanel(width int) string {
 		for _, entry := range m.logs {
 			// The timestamp takes 9 columns of the line.
 			b.WriteString(dimStyle.Render(entry.at.Format("15:04:05")+" ") +
-				entry.tone.Render(trunc(entry.text, width-9)) + "\n")
+				entry.tone.Render(textfmt.Trunc(entry.text, width-9)) + "\n")
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The flight-number prompt: the first thing a new search asks for.
 

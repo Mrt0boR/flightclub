@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"flighttrack/internal/history"
+	"flighttrack/internal/textfmt"
 )
 
 func runHistory(args []string) int {
@@ -50,9 +51,9 @@ func runHistory(args []string) int {
 		case !hasPosition:
 			fmt.Printf("  %-22s no cached position\n", entry.Label())
 		case entry.Usable(now):
-			fmt.Printf("  %-22s %s old (%s, reusable)\n", entry.Label(), shortAge(age), history.Rate(age))
+			fmt.Printf("  %-22s %s old (%s, reusable)\n", entry.Label(), textfmt.ShortAge(age), history.Rate(age))
 		default:
-			fmt.Printf("  %-22s %s old (stale, will refetch)\n", entry.Label(), shortAge(age))
+			fmt.Printf("  %-22s %s old (stale, will refetch)\n", entry.Label(), textfmt.ShortAge(age))
 		}
 	}
 	return 0

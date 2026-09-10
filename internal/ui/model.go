@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The dashboard's state, the messages that drive it, and the commands that
 // produce those messages. Behaviour lives in update.go and the screen_*.go

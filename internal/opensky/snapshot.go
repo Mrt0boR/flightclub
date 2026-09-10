@@ -3,7 +3,11 @@ package opensky
 // The data shapes the rest of the app works with: one aircraft as the network
 // last saw it, and a complete read of the sky.
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Observation is one aircraft as OpenSky last saw it.
 type Observation struct {
@@ -29,6 +33,21 @@ func (o Observation) AltitudeFt() float64 { return o.GeoAlt * 3.28084 }
 
 // ClimbFPM returns vertical rate in feet per minute.
 func (o Observation) ClimbFPM() float64 { return o.VertRate * 196.85 }
+
+// Describe renders the observation as one line of prose, for notification
+// bodies and log lines. Both the dashboard and watch mode use it.
+func (o Observation) Describe() string {
+	var b strings.Builder
+	if o.HasPos {
+		fmt.Fprintf(&b, "Position %.4f, %.4f. ", o.Lat, o.Lon)
+	}
+	if o.OnGround {
+		fmt.Fprintf(&b, "On the ground at %.0f kts.", o.SpeedKts())
+	} else {
+		fmt.Fprintf(&b, "Altitude %.0f ft, %.0f kts.", o.AltitudeFt(), o.SpeedKts())
+	}
+	return b.String()
+}
 
 // Snapshot is one complete read of the sky.
 type Snapshot struct {

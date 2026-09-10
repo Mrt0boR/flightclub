@@ -1,4 +1,4 @@
-package main
+package ui
 
 // View picks which screen to render. Each screen's own rendering lives beside
 // its key handling in the matching screen_*.go file.

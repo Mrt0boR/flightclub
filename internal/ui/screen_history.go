@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The opening screen: previously searched flights, colour-coded by how fresh
 // the position saved against each one is. Picking a fresh entry reopens the
@@ -15,6 +15,7 @@ import (
 	"flighttrack/internal/airports"
 	"flighttrack/internal/history"
 	"flighttrack/internal/opensky"
+	"flighttrack/internal/textfmt"
 )
 
 func (m model) onHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -160,7 +161,7 @@ func freshnessNote(entry history.Entry, now time.Time) string {
 		bar = ageStyle.Render("#") + dimStyle.Render("##")
 	}
 
-	note := ageStyle.Render(fmt.Sprintf("%-8s", shortAge(age)))
+	note := ageStyle.Render(fmt.Sprintf("%-8s", textfmt.ShortAge(age)))
 	if freshness == history.Stale {
 		note += dimStyle.Render(" will refetch")
 	} else {

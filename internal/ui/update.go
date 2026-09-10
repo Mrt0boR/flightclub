@@ -1,4 +1,4 @@
-package main
+package ui
 
 // The central message loop. Update sorts incoming messages, hands keystrokes
 // to whichever screen is showing, and owns the two things that span screens:
@@ -159,7 +159,7 @@ func (m *model) phaseChangeCmds(obs *opensky.Observation) []tea.Cmd {
 			Kind: "takeoff", Flight: m.flight.String(), Callsign: obs.Callsign,
 			Icao24: obs.Icao24, Time: time.Now(),
 			Title: fmt.Sprintf("%s has taken off", m.flight),
-			Body:  describe(obs),
+			Body:  obs.Describe(),
 		}))
 	} else {
 		m.logf(goodStyle, "%s has landed", m.flight)
@@ -167,7 +167,7 @@ func (m *model) phaseChangeCmds(obs *opensky.Observation) []tea.Cmd {
 			Kind: "landing", Flight: m.flight.String(), Callsign: obs.Callsign,
 			Icao24: obs.Icao24, Time: time.Now(),
 			Title: fmt.Sprintf("%s has landed", m.flight),
-			Body:  describe(obs),
+			Body:  obs.Describe(),
 		}))
 		m.arrivalAlerted = true // no point warning about an arrival now
 	}
