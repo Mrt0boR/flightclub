@@ -66,6 +66,21 @@ Then run `.\flighttrack.exe` from this folder, or copy the `.exe` anywhere on
 your PATH. It is a single self-contained binary — the airport database is
 compiled into it, so there are no data files to keep alongside it.
 
+### Update
+
+```powershell
+.\install.ps1 -Update
+```
+
+Pulls the latest source, rebuilds, and replaces the installed binary. It
+refuses if you have uncommitted changes in the source folder.
+
+The dashboard checks GitHub for a newer release at most once a day, caches the
+answer, and fails silently if there is no network. When there is one, it shows
+a single line in the INFO panel — it never downloads anything or interrupts
+you. `flighttrack version` runs the same check on demand. Builds made without
+the install script report as `dev` and never check.
+
 ### Uninstall
 
 ```powershell
@@ -81,6 +96,7 @@ flighttrack                                   # dashboard, with saved searches
 flighttrack -flight QF2 -from SYD -to LHR     # straight to the dashboard
 flighttrack watch -flights QF2,CX251          # background, no interface
 flighttrack history                           # show what is saved
+flighttrack version                           # build, and whether it is current
 flighttrack help                              # everything
 ```
 
@@ -221,6 +237,7 @@ internal/airports/         embedded airport table
 internal/history/          saved searches and position cache
 internal/notify/           desktop and webhook notifications
 internal/textfmt/          shared text helpers
+internal/version/          build stamp and the GitHub release check
 ```
 
 Inside `internal/ui`, each screen keeps its key handling and its rendering in

@@ -11,6 +11,7 @@ import (
 	"flighttrack/internal/airports"
 	"flighttrack/internal/eta"
 	"flighttrack/internal/opensky"
+	"flighttrack/internal/version"
 )
 
 // Prints what each screen actually renders, so the layout can be inspected
@@ -82,6 +83,12 @@ func TestPreviewRender(t *testing.T) {
 	noOrigin.trackStartNM = 2600 // as if tracking began 2600 nm out
 	noOrigin.est = eta.Compute(noOrigin.obs, airports.Airport{}, dest, noOrigin.snapFetched)
 	fmt.Println(noOrigin.View())
+
+	fmt.Println("\n########## SCREEN 3c: DASHBOARD (update available) ##########")
+	withUpdate := m
+	withUpdate.hasUpdate = true
+	withUpdate.update = version.Release{Version: "v1.4.0"}
+	fmt.Println(withUpdate.View())
 
 	fmt.Println("\n########## SCREEN 4: DASHBOARD (not visible) ##########")
 	m.obs = nil

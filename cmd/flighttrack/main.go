@@ -46,6 +46,8 @@ func main() {
 			os.Exit(watch.Run(os.Args[2:]))
 		case "history":
 			os.Exit(runHistory(os.Args[2:]))
+		case "version", "--version", "-v":
+			os.Exit(runVersion())
 		case "help", "--help":
 			registerDashFlags() // so the option list is populated
 			usage()

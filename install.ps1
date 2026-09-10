@@ -31,7 +31,8 @@
 param(
     [switch]$Uninstall,
     [switch]$Purge,
-    [switch]$NoPath
+    [switch]$NoPath,
+    [switch]$Update
 )
 
 $ErrorActionPreference = 'Stop'
@@ -117,6 +118,37 @@ if ($Uninstall) {
     exit 0
 }
 
+# --- update ------------------------------------------------------------------
+# Pull the newest source, then fall through to a normal install, which
+# rebuilds and replaces the binary in place.
+
+if ($Update) {
+    Write-Host ""
+    Write-Host "Updating $AppName" -ForegroundColor Cyan
+    Write-Host ""
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Host "  git is not installed, so there is nothing to pull from." -ForegroundColor Red
+        exit 1
+    }
+    Push-Location $SourceDir
+    try {
+        $dirty = & git status --porcelain
+        if ($dirty) {
+            Write-Warn "You have uncommitted changes here:"
+            $dirty | ForEach-Object { Write-Host "    $_" }
+            Write-Host "  Commit or stash them first; refusing to pull over your work." -ForegroundColor Red
+            exit 1
+        }
+        Write-Step "Pulling latest source"
+        & git pull --ff-only
+        if ($LASTEXITCODE -ne 0) { throw "git pull failed with exit code $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+    Write-Good "Source up to date; rebuilding"
+}
+
 # --- install -----------------------------------------------------------------
 
 Write-Host ""
@@ -140,7 +172,17 @@ if ($goExe) {
     Write-Step "Building with $goExe"
     Push-Location $SourceDir
     try {
-        & $goExe build -o $ExeName ./cmd/flighttrack
+        # Stamp the build with the current git tag so the app can tell whether
+        # a newer release exists. Without a tag it stays "dev" and never
+        # checks, which is what you want when working from source.
+        $stamp = "dev"
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            $described = & git describe --tags --exact-match HEAD 2>$null
+            if ($LASTEXITCODE -eq 0 -and $described) { $stamp = $described.Trim() }
+        }
+        Write-Step "Version stamp: $stamp"
+
+        & $goExe build -ldflags "-X flighttrack/internal/version.Version=$stamp" -o $ExeName ./cmd/flighttrack
         if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
         Write-Good "Built $ExeName"
     } finally {

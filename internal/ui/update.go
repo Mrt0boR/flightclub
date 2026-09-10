@@ -48,6 +48,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case updateMsg:
+		if msg.available {
+			m.update, m.hasUpdate = msg.release, true
+		}
+		return m, nil
+
 	case snapshotMsg:
 		return m.onSnapshot(msg)
 

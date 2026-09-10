@@ -19,6 +19,7 @@ import (
 	"flighttrack/internal/history"
 	"flighttrack/internal/notify"
 	"flighttrack/internal/opensky"
+	"flighttrack/internal/version"
 )
 
 type screen int
@@ -92,6 +93,10 @@ type model struct {
 	cacheAge    time.Time // when the cached position was originally fetched
 	histWarning string
 
+	// Set only if a newer release exists. Shown as one line; never acted on.
+	update    version.Release
+	hasUpdate bool
+
 	width, height int
 }
 
@@ -105,6 +110,13 @@ type snapshotMsg struct {
 type tickMsg time.Time
 
 type notifyDoneMsg struct{ err error }
+
+// updateMsg carries the result of the release check. Absent or failed checks
+// simply never produce one worth showing.
+type updateMsg struct {
+	release   version.Release
+	available bool
+}
 
 // ----------------------------------------------------------------- commands
 
@@ -164,8 +176,24 @@ func deliver(set *notify.Set, e notify.Event) tea.Msg {
 // returns the work that should begin immediately: the cursor blinking, the
 // spinner animating, and the once-a-second clock tick that drives the
 // countdown. tea.Batch bundles them so they all start together.
+// checkUpdate asks GitHub whether a newer release exists. It runs off the UI
+// goroutine like any other command, is capped to one network call a day by
+// the version package, and stays silent on every failure.
+func checkUpdate() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		path, err := version.DefaultCachePath()
+		if err != nil {
+			return updateMsg{}
+		}
+		release, available := version.Check(ctx, path)
+		return updateMsg{release: release, available: available}
+	}
+}
+
 func (m model) Init() tea.Cmd {
-	cmds := []tea.Cmd{textinput.Blink, m.spin.Tick, tick()}
+	cmds := []tea.Cmd{textinput.Blink, m.spin.Tick, tick(), checkUpdate()}
 	if m.loading {
 		// A flight was named on the command line, so go and find it now
 		// rather than waiting for the first tick.

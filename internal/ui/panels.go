@@ -238,6 +238,12 @@ func (m model) infoPanel(width int) string {
 		b.WriteString("\n" + badStyle.Render(textfmt.Wrap(m.errMsg, width)) + "\n")
 	}
 
+	// One quiet line, never a prompt. The user updates when they choose to.
+	if m.hasUpdate {
+		b.WriteString("\n" + goodStyle.Render("update "+m.update.Version) + "\n")
+		b.WriteString(dimStyle.Render(textfmt.Wrap("run install.ps1 -Update", width)) + "\n")
+	}
+
 	if len(m.logs) > 0 {
 		b.WriteString("\n" + titleStyle.Render("EVENTS") + "\n\n")
 		for _, entry := range m.logs {
