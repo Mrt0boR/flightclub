@@ -112,18 +112,32 @@ func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
+// A tea.Cmd is itself a function: `type Cmd func() Msg`. Returning one hands
+// Bubble Tea a parcel of work to run on its own goroutine; whatever it returns
+// arrives back at Update as a message. That is why the two functions below
+// return a function rather than doing the work themselves — an API call or a
+// desktop balloon would otherwise block the interface while it ran.
+//
+// Each one is a one-line wrapper around a plain function, so the actual work
+// stays readable and can be called directly from a test.
+
 func (m model) fetch() tea.Cmd {
 	client := m.client
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		defer cancel()
-		snap, err := client.Fetch(ctx)
-		return snapshotMsg{snap: snap, err: err}
-	}
+	return func() tea.Msg { return fetchSnapshot(client) }
+}
+
+// fetchSnapshot pulls one snapshot from the API and wraps the result, error
+// included, as a message.
+func fetchSnapshot(client *opensky.Client) tea.Msg {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	snap, err := client.Fetch(ctx)
+	return snapshotMsg{snap: snap, err: err}
 }
 
 // send delivers a notification off the UI goroutine, since a desktop balloon
-// blocks for several seconds.
+// blocks for several seconds. It returns nil when notifications are off, and
+// a nil command is Bubble Tea's way of saying there is nothing to do.
 func (m model) send(e notify.Event) tea.Cmd {
 	if !m.notifyOn {
 		return nil
@@ -132,18 +146,29 @@ func (m model) send(e notify.Event) tea.Cmd {
 	if m.webhook != nil {
 		set.Add(m.webhook)
 	}
-	return func() tea.Msg {
-		errs := set.Notify(e)
-		if len(errs) > 0 {
-			return notifyDoneMsg{err: errs[0]}
-		}
-		return notifyDoneMsg{}
-	}
+	return func() tea.Msg { return deliver(set, e) }
 }
 
+// deliver sends one event to every configured notifier and reports the first
+// failure, if there was one.
+func deliver(set *notify.Set, e notify.Event) tea.Msg {
+	errs := set.Notify(e)
+	if len(errs) > 0 {
+		return notifyDoneMsg{err: errs[0]}
+	}
+	return notifyDoneMsg{}
+}
+
+// Init is one of the three methods Bubble Tea requires on a model, alongside
+// Update (in update.go) and View (in view.go). It runs once at startup and
+// returns the work that should begin immediately: the cursor blinking, the
+// spinner animating, and the once-a-second clock tick that drives the
+// countdown. tea.Batch bundles them so they all start together.
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{textinput.Blink, m.spin.Tick, tick()}
 	if m.loading {
+		// A flight was named on the command line, so go and find it now
+		// rather than waiting for the first tick.
 		cmds = append(cmds, m.fetch())
 	}
 	return tea.Batch(cmds...)
