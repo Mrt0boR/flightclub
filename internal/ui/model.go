@@ -96,6 +96,7 @@ type model struct {
 
 	toast          notify.Toast
 	webhook        *notify.Webhook
+	discord        *notify.Discord
 	prevOnGround   *bool
 	arrivalAlerted bool
 	logs           []logEntry
@@ -171,6 +172,9 @@ func (m model) send(e notify.Event) tea.Cmd {
 	set := notify.NewSet(m.toast)
 	if m.webhook != nil {
 		set.Add(m.webhook)
+	}
+	if m.discord != nil {
+		set.Add(m.discord)
 	}
 	return func() tea.Msg { return deliver(set, e) }
 }

@@ -87,6 +87,7 @@ type dashFlags struct {
 	dest    *string
 	refresh *time.Duration
 	hook    *string
+	discord *string
 	noAuto  *bool
 	dev     *bool
 }
@@ -99,6 +100,7 @@ func registerDashFlags() dashFlags {
 		dest:    flag.String("to", "", "destination airport code, e.g. JFK"),
 		refresh: flag.Duration("refresh", 5*time.Minute, "how often to auto-refresh the snapshot"),
 		hook:    flag.String("webhook", os.Getenv("FLIGHTTRACK_WEBHOOK"), "optional https URL to POST events to"),
+		discord: flag.String("discord", os.Getenv("FLIGHTTRACK_DISCORD"), "optional Discord channel webhook URL, for phone push via Discord's own app"),
 		noAuto:  flag.Bool("no-auto-refresh", false, "start with auto-refresh disabled"),
 		dev:     flag.Bool("dev", false, "seed a fake flight; ctrl+t then simulates its landing (for testing notifications)"),
 	}
@@ -120,6 +122,7 @@ func runDashboard() {
 		Refresh:     *flags.refresh,
 		AutoRefresh: !*flags.noAuto,
 		WebhookURL:  *flags.hook,
+		DiscordURL:  *flags.discord,
 		Dev:         *flags.dev,
 	})
 	if err != nil {

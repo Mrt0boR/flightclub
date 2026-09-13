@@ -29,6 +29,7 @@ type Config struct {
 	Refresh     time.Duration
 	AutoRefresh bool
 	WebhookURL  string // optional https endpoint for events
+	DiscordURL  string // optional Discord channel webhook, for phone push
 	Dev         bool   // seed a fake flight and enable the landing simulator
 }
 
@@ -43,6 +44,13 @@ func Run(cfg Config) error {
 			return fmt.Errorf("webhook: %w", err)
 		}
 		m.webhook = hook
+	}
+	if cfg.DiscordURL != "" {
+		d, err := notify.NewDiscord(cfg.DiscordURL)
+		if err != nil {
+			return fmt.Errorf("discord: %w", err)
+		}
+		m.discord = d
 	}
 	if cfg.Dev {
 		m.seedDevFlight()

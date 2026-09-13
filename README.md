@@ -121,6 +121,7 @@ The same starting point can be given on the command line:
 | `-refresh` | `5m` | How often to auto-refresh (minimum `1m`) |
 | `-no-auto-refresh` | off | Start with auto-refresh disabled |
 | `-webhook` | — | HTTPS URL to POST takeoff and landing events to |
+| `-discord` | — | Discord channel webhook URL, for phone push via Discord's app |
 
 Once the dashboard is open:
 
@@ -151,8 +152,9 @@ flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
 | --- | --- | --- |
 | `-flights` | required | Comma-separated flight numbers |
 | `-interval` | `90s` | How often to poll OpenSky |
-| `-notify` | `console` | Comma-separated: `console`, `desktop`, `webhook` |
+| `-notify` | `console` | Comma-separated: `console`, `desktop`, `webhook`, `discord` |
 | `-webhook-url` | — | HTTPS endpoint to POST events to |
+| `-discord-url` | — | Discord channel webhook URL |
 | `-confirm` | `2` | Consecutive polls a change must hold before it is reported |
 | `-lost-after` | `25m` | Report a loss of contact after this long with no data |
 | `-state-file` | `flighttrack-watch-state.json` | Where flight phases are persisted across restarts |
@@ -160,6 +162,32 @@ flighttrack watch -flights QF2,CX251,SQ322 -notify console,desktop
 
 Webhooks receive the full event as JSON. Plain HTTP is refused to anything but
 loopback, so events never cross a network in the clear.
+
+### Phone notifications
+
+The `discord` sink posts events into a Discord channel as a coloured embed
+(blue takeoff, green landing, gold arriving-soon, red signal-lost), and
+Discord's own mobile app handles delivery to your phone — which is the part
+that matters, since it is the same infrastructure your regular messages use
+rather than a shared free push service.
+
+A Discord webhook posts into a channel; it cannot DM you directly, so the
+practical way to get a private, DM-like experience is a small server with
+just yourself in it (or a channel only you can see there), with mobile
+notifications turned on for it.
+
+1. In that server: **Server Settings → Integrations → Webhooks → New
+   Webhook**, pick the channel, copy the webhook URL.
+2. Point flighttrack at it:
+
+```powershell
+flighttrack -flight QF2 -to LHR -discord https://discord.com/api/webhooks/123.../abcXYZ
+flighttrack watch -flights QF2,CX251 -notify console,discord -discord-url https://discord.com/api/webhooks/123.../abcXYZ
+```
+
+The URL can also come from `FLIGHTTRACK_DISCORD`. Treat it like a password —
+anyone with it can post into that channel — but unlike a bot token it can't
+do anything beyond that one channel.
 
 ## API credentials
 
@@ -256,7 +284,7 @@ internal/opensky/          API client, flight-number matching
 internal/eta/              great-circle maths, arrival estimates
 internal/airports/         embedded airport table
 internal/history/          saved searches and position cache
-internal/notify/           desktop and webhook notifications
+internal/notify/           desktop, webhook and Discord notifications
 internal/textfmt/          shared text helpers
 internal/version/          build stamp and the GitHub release check
 ```

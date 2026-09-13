@@ -44,18 +44,26 @@ removed; the commit is kept at the tag `archive/ntfy-attempt` if any of it
 is worth reusing later (`NewNtfy` takes any base URL, so it would work
 unchanged against a self-hosted ntfy server rather than ntfy.sh).
 
-Two ways forward, in order of preference:
+**Discord webhook: built (2026-09-13), untested for reliability yet.**
+`internal/notify/discord.go` posts a coloured embed to a channel webhook;
+`-discord` / `-discord-url` / `FLIGHTTRACK_DISCORD` wire it into both the
+dashboard and watch mode. Chosen over a bot-DM because a webhook URL is
+scoped to one channel and can't do anything else, versus an account-level
+bot token — see the README's "Phone notifications" section for the setup
+(a personal server/channel, since a webhook cannot DM directly). Discord's
+own mobile push is generally reliable, which was the whole point of moving
+off ntfy.sh, but that has not yet been confirmed with a real landing.
 
-- [ ] **`notify.Telegram`** (~40 lines). A bot-to-user chat is authenticated
-      on both ends and delivery is Telegram's problem, not a free shared
-      server's — no battery/background-refresh fighting expected. Token
-      from `FLIGHTTRACK_TELEGRAM_TOKEN`, chat id from a flag or env. Try
-      this first; it needs no infrastructure of our own.
-- [ ] **Self-hosted ntfy on the always-on Pi** (see above), only if
-      Telegram is unsuitable for some reason. Self-hosting removes the
-      exact failure mode seen here (a free shared server's push reliability
-      is not our problem to fix), but it is more to run and maintain than
-      just using Telegram.
+- [ ] Confirm Discord's push actually wakes the phone in practice (the
+      thing ntfy.sh failed at). If it does not, the fallback is a real bot
+      + DM (heavier: account-level bot token, shared-server requirement,
+      see the conversation this was scoped in) or Telegram (a bot-to-user
+      chat, similar weight to a Discord bot but no shared-server
+      requirement).
+- [ ] If self-hosting ends up wanted anyway (e.g. because the Pi is already
+      running for always-on watch), self-hosted ntfy is still on the table
+      — `NewNtfy` at tag `archive/ntfy-attempt` needs no changes to point
+      at a self-hosted server instead of ntfy.sh.
 
 ## Progressive refresh near arrival
 
