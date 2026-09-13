@@ -33,20 +33,29 @@ What is missing:
 
 ## Notification delivery reliability
 
-ntfy.sh's free hosted push has been unreliable in testing — messages reach
-the server fine (confirmed), but the phone is often not woken until the app
-is opened. This is ntfy.sh's infrastructure, not our code.
+**ntfy.sh hosted push: tried, scrapped (2026-09-13).** Messages reached the
+server fine (confirmed by curl and by both test priorities showing correctly
+tagged), but the phone was only ever updated on manual app refresh — no
+background wake, even after checking Instant delivery, battery
+unrestriction, and a 15-minute untouched wait. That is ntfy.sh's hosted
+infrastructure, not our code, but it makes the free hosted service a dead
+end for this. The `notify.Ntfy` code and its branch (`mobile-notifs`) were
+removed; the commit is kept at the tag `archive/ntfy-attempt` if any of it
+is worth reusing later (`NewNtfy` takes any base URL, so it would work
+unchanged against a self-hosted ntfy server rather than ntfy.sh).
 
-- [ ] Add a `notify.Telegram` sink (~40 lines, same shape as
-      `internal/notify/ntfy.go`). A bot-to-user chat is authenticated on
-      both ends, delivery is Telegram's problem, and there is no public
-      topic to leak. Token from `FLIGHTTRACK_TELEGRAM_TOKEN`, chat id from
-      a flag or env.
-- [ ] Document the reserved-topic + `FLIGHTTRACK_NTFY_TOKEN` route for
-      people who want to stay on ntfy but close the "anyone can post to my
-      topic" hole.
-- [ ] Consider a self-hosted ntfy note in the Pi section — if the Pi is
-      already running, it can host ntfy too.
+Two ways forward, in order of preference:
+
+- [ ] **`notify.Telegram`** (~40 lines). A bot-to-user chat is authenticated
+      on both ends and delivery is Telegram's problem, not a free shared
+      server's — no battery/background-refresh fighting expected. Token
+      from `FLIGHTTRACK_TELEGRAM_TOKEN`, chat id from a flag or env. Try
+      this first; it needs no infrastructure of our own.
+- [ ] **Self-hosted ntfy on the always-on Pi** (see above), only if
+      Telegram is unsuitable for some reason. Self-hosting removes the
+      exact failure mode seen here (a free shared server's push reliability
+      is not our problem to fix), but it is more to run and maintain than
+      just using Telegram.
 
 ## Progressive refresh near arrival
 
