@@ -11,17 +11,19 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"flighttrack/internal/airports"
+	"flighttrack/internal/config"
 	"flighttrack/internal/history"
 	"flighttrack/internal/notify"
 	"flighttrack/internal/opensky"
 )
 
 // Config is what the command line supplies to the dashboard. Every field is
-// optional; the zero value opens on the saved-search list or an empty prompt.
+// optional; the zero value opens on the main menu.
 type Config struct {
 	Flight      string // flight number as the user typed it
 	Origin      string // optional IATA/ICAO code, enables route progress
@@ -45,12 +47,8 @@ func Run(cfg Config) error {
 		}
 		m.webhook = hook
 	}
-	if cfg.DiscordURL != "" {
-		d, err := notify.NewDiscord(cfg.DiscordURL)
-		if err != nil {
-			return fmt.Errorf("discord: %w", err)
-		}
-		m.discord = d
+	if err := m.setupDiscord(cfg.DiscordURL); err != nil {
+		return err
 	}
 	if cfg.Dev {
 		m.seedDevFlight()
@@ -74,8 +72,34 @@ func Run(cfg Config) error {
 	return nil
 }
 
-// newModel builds the dashboard's starting state: inputs, spinner, API client
-// and whatever history is on disk.
+// setupDiscord wires up the Discord notifier. An explicit flag or env value
+// (cliURL) takes priority and a bad one is a hard startup error, matching how
+// -webhook already behaves. Otherwise it falls back to whatever was saved via
+// the in-app "Setup Discord webhook" screen; a bad saved value only warns,
+// since the user cannot fix a crash-on-startup nearly as easily as they can
+// reopen that screen.
+func (m *model) setupDiscord(cliURL string) error {
+	url := strings.TrimSpace(cliURL)
+	if url == "" {
+		url = m.cfg.DiscordWebhookURL
+	}
+	if url == "" {
+		return nil
+	}
+	d, err := notify.NewDiscord(url)
+	if err != nil {
+		if cliURL != "" {
+			return fmt.Errorf("discord: %w", err)
+		}
+		m.logf(warnStyle, "saved discord webhook is invalid: %v", err)
+		return nil
+	}
+	m.discord = d
+	return nil
+}
+
+// newModel builds the dashboard's starting state: inputs, spinner, API
+// client, and whatever history and settings are on disk.
 func newModel(refresh time.Duration, autoRefresh bool) model {
 	flightInput := textinput.New()
 	flightInput.Placeholder = "BA117"
@@ -90,25 +114,40 @@ func newModel(refresh time.Duration, autoRefresh bool) model {
 	destInput.Width = 32
 	destInput.Prompt = "> "
 
+	discordInput := textinput.New()
+	discordInput.Placeholder = "https://discord.com/api/webhooks/..."
+	discordInput.CharLimit = 200
+	discordInput.Width = 50
+	discordInput.Prompt = "> "
+
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
-	spin.Style = lipgloss.NewStyle().Foreground(colAccent)
+	spin.Style = lipgloss.NewStyle().Foreground(accentColor())
 
 	hist, histPath, histWarning := loadHistory()
+	cfg, cfgPath, cfgWarning := loadConfig()
+	if cfgWarning != "" && histWarning == "" {
+		histWarning = cfgWarning // one warning line is enough; history's is shown first if both exist
+	}
+	applyTheme(cfg.Theme)
 
 	return model{
-		client:      opensky.New(os.Getenv("OPENSKY_CLIENT_ID"), os.Getenv("OPENSKY_CLIENT_SECRET")),
-		screen:      screenFlight,
-		hist:        hist,
-		histPath:    histPath,
-		histWarning: histWarning,
-		flightInput: flightInput,
-		destInput:   destInput,
-		spin:        spin,
-		now:         time.Now(),
-		notifyOn:    notify.Toast{}.Available(),
-		autoRefresh: autoRefresh,
-		refreshIn:   refresh,
+		client:       opensky.New(os.Getenv("OPENSKY_CLIENT_ID"), os.Getenv("OPENSKY_CLIENT_SECRET")),
+		screen:       screenMain,
+		hist:         hist,
+		histPath:     histPath,
+		histWarning:  histWarning,
+		cfg:          cfg,
+		cfgPath:      cfgPath,
+		flightInput:  flightInput,
+		destInput:    destInput,
+		discordInput: discordInput,
+		handbook:     viewport.New(handbookWidth, 20),
+		spin:         spin,
+		now:          time.Now(),
+		notifyOn:     notify.Toast{}.Available(),
+		autoRefresh:  autoRefresh,
+		refreshIn:    refresh,
 	}
 }
 
@@ -120,6 +159,20 @@ func loadHistory() (*history.File, string, string) {
 		return &history.File{}, "", err.Error()
 	}
 	loaded, err := history.Load(path)
+	if err != nil {
+		return loaded, path, err.Error()
+	}
+	return loaded, path, ""
+}
+
+// loadConfig reads the saved settings (Discord webhook, theme). Same
+// tolerance as loadHistory: a missing or unreadable file is never fatal.
+func loadConfig() (*config.Config, string, string) {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return &config.Config{}, "", err.Error()
+	}
+	loaded, err := config.Load(path)
 	if err != nil {
 		return loaded, path, err.Error()
 	}
@@ -151,12 +204,14 @@ func (m *model) preseed(flight, origin, dest string) error {
 		m.flight = id
 		m.flightTyped = strings.ToUpper(strings.TrimSpace(flight))
 		m.loading = true
+		// A flight was named on the command line: skip the main menu entirely
+		// and go straight to the loading prompt, same as today.
+		m.screen = screenFlight
 		return nil
 	}
-	if len(m.hist.Entries) > 0 {
-		// Nothing named on the command line and there is a past search to
-		// offer, so start on the list rather than an empty prompt.
-		m.screen = screenHistory
-	}
+	// Nothing named on the command line: open on the main menu. screenMain is
+	// already newModel's default, but set it explicitly so this function is
+	// the one place that decides the starting screen.
+	m.screen = screenMain
 	return nil
 }

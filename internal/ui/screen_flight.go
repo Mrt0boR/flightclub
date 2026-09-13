@@ -13,7 +13,10 @@ import (
 func (m model) onFlightKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEsc:
-		return m, tea.Quit
+		m.screen = screenMain
+		m.errMsg = ""
+		m.flightInput.Blur()
+		return m, nil
 
 	case tea.KeyEnter:
 		if m.loading {
@@ -51,6 +54,6 @@ func (m model) viewFlight() string {
 		b.WriteString("  " + badStyle.Render(m.errMsg) + "\n")
 	}
 	b.WriteString("\n" + dimStyle.Render("examples: BA117   KL1234   LH400   DLH400 (ICAO callsign)") + "\n")
-	b.WriteString(dimStyle.Render("enter to search    esc to quit") + "\n")
+	b.WriteString(dimStyle.Render("enter to search    esc to go back") + "\n")
 	return b.String()
 }

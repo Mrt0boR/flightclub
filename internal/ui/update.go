@@ -82,6 +82,8 @@ func (m model) forwardToInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flightInput, cmd = m.flightInput.Update(msg)
 	case screenDest:
 		m.destInput, cmd = m.destInput.Update(msg)
+	case screenDiscordSetup:
+		m.discordInput, cmd = m.discordInput.Update(msg)
 	}
 	return m, cmd
 }
@@ -94,6 +96,8 @@ func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
+	case screenMain:
+		return m.onMainKey(msg)
 	case screenHistory:
 		return m.onHistoryKey(msg)
 	case screenFlight:
@@ -102,6 +106,12 @@ func (m model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.onPickerKey(msg)
 	case screenDash:
 		return m.onDashKey(msg)
+	case screenDiscordSetup:
+		return m.onDiscordSetupKey(msg)
+	case screenSettings:
+		return m.onSettingsKey(msg)
+	case screenHandbook:
+		return m.onHandbookKey(msg)
 	}
 	return m, nil
 }

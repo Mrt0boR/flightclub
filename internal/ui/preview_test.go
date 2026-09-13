@@ -7,9 +7,13 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 
 	"flighttrack/internal/airports"
+	"flighttrack/internal/config"
 	"flighttrack/internal/eta"
+	"flighttrack/internal/history"
+	"flighttrack/internal/notify"
 	"flighttrack/internal/opensky"
 	"flighttrack/internal/version"
 )
@@ -33,19 +37,42 @@ func TestPreviewRender(t *testing.T) {
 	di.Width = 32
 	di.SetValue("JFK")
 
+	ci := textinput.New()
+	ci.Placeholder = "https://discord.com/api/webhooks/..."
+	ci.Prompt = "> "
+	ci.Width = 50
+
 	m := model{
-		client:      opensky.New("", ""),
-		flightInput: fi,
-		destInput:   di,
-		spin:        spinner.New(),
-		now:         now,
-		refreshIn:   defaultRefresh,
-		width:       118,
-		height:      40,
-		notifyOn:    true,
-		autoRefresh: true,
-		nextRefresh: now.Add(3*time.Minute + 12*time.Second),
+		client:       opensky.New("", ""),
+		flightInput:  fi,
+		destInput:    di,
+		discordInput: ci,
+		handbook:     viewport.New(handbookWidth, 20),
+		hist:         &history.File{},
+		cfg:          &config.Config{},
+		spin:         spinner.New(),
+		now:          now,
+		refreshIn:    defaultRefresh,
+		width:        118,
+		height:       40,
+		notifyOn:     true,
+		autoRefresh:  true,
+		nextRefresh:  now.Add(3*time.Minute + 12*time.Second),
 	}
+
+	fmt.Println("########## SCREEN 0: MAIN MENU (nothing saved yet) ##########")
+	m.screen = screenMain
+	fmt.Println(m.View())
+
+	fmt.Println("\n########## SCREEN 0b: MAIN MENU (history + discord configured) ##########")
+	withSaved := m
+	withSaved.hist = &history.File{Entries: []history.Entry{
+		{Flight: "QF2", Origin: "SYD", Dest: "LHR"},
+		{Flight: "BA117", Dest: "JFK"},
+	}}
+	withSaved.cfg = &config.Config{DiscordWebhookURL: "https://discord.com/api/webhooks/1/abc"}
+	withSaved.discord = &notify.Discord{URL: withSaved.cfg.DiscordWebhookURL}
+	fmt.Println(withSaved.View())
 
 	fmt.Println("\n########## SCREEN 1: FLIGHT ENTRY ##########")
 	m.screen = screenFlight
@@ -106,5 +133,34 @@ func TestPreviewRender(t *testing.T) {
 	}
 	m.est = eta.Compute(m.obs, airports.Airport{}, dest, now)
 	m.menuIdx = menuNotify
+	fmt.Println(m.View())
+
+	fmt.Println("\n########## SCREEN 6: SETUP DISCORD WEBHOOK (empty) ##########")
+	m.screen = screenDiscordSetup
+	m.discordSetupMsg = ""
+	fmt.Println(m.View())
+
+	fmt.Println("\n########## SCREEN 6b: SETUP DISCORD WEBHOOK (saved) ##########")
+	saved := m
+	saved.discordInput.SetValue("https://discord.com/api/webhooks/123456789012345678/aBcDeF")
+	saved.discordInput.CursorStart() // matches what activateMain does when reopening a saved URL
+	saved.discordSetupOK = true
+	saved.discordSetupMsg = "Saved. Press ctrl+t to send a test notification."
+	fmt.Println(saved.View())
+
+	fmt.Println("\n########## SCREEN 6c: SETUP DISCORD WEBHOOK (rejected) ##########")
+	rejected := m
+	rejected.discordInput.SetValue("https://discord.gg/not-a-webhook")
+	rejected.discordSetupOK = false
+	rejected.discordSetupMsg = `"discord.gg" does not look like a Discord webhook URL (expected discord.com)`
+	fmt.Println(rejected.View())
+
+	fmt.Println("\n########## SCREEN 7: SETTINGS ##########")
+	m.screen = screenSettings
+	m.settingsIdx = 1
+	fmt.Println(m.View())
+
+	fmt.Println("\n########## SCREEN 8: HANDBOOK ##########")
+	m.screen = screenHandbook
 	fmt.Println(m.View())
 }

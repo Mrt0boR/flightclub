@@ -94,22 +94,38 @@ Add `-Purge` to also delete your saved search history.
 ## Use it
 
 ```powershell
-flighttrack                                   # dashboard, with saved searches
-flighttrack -flight QF2 -from SYD -to LHR      # dashboard, preseeded
-flighttrack watch -flights QF2,CX251           # background, no interface
-flighttrack history                            # show saved searches
-flighttrack version                            # build, and whether it is current
-flighttrack help                               # full option list
+flighttrack                                   # opens the main menu
+flighttrack -flight QF2 -from SYD -to LHR     # straight to the dashboard, no menu
+flighttrack watch -flights QF2,CX251          # background, no interface
+flighttrack history                           # show saved searches
+flighttrack version                           # build, and whether it is current
+flighttrack help                              # full option list
 ```
+
+### Main menu
+
+A bare `flighttrack` opens on the main menu, which everything else hangs off:
+
+| Item | Does |
+| --- | --- |
+| Search | Start a new search: flight number, then origin (optional), then destination |
+| Recently tracked flights | Your five most recent searches, ready to reopen |
+| Setup Discord webhook | Paste a channel webhook URL; validated and remembered — see below |
+| Settings | Pick a colour theme |
+| Handbook | A scrollable in-app quick reference |
+
+`Esc` steps back one level toward this menu from wherever you are; `q` quits
+outright from a menu screen (not from a text box, where `q` is just a letter —
+use `Esc` or `Ctrl+C` there).
+
+Naming a flight on the command line (`-flight`) skips the menu entirely and
+goes straight to the dashboard, same as before.
 
 ### Dashboard
 
-On launch you get your recent searches, colour-coded by how fresh the saved
-position is: green under 10 minutes, amber under an hour, red beyond that. Pick
-one and it opens straight away on cached data if that is still usable,
-otherwise it fetches. Press `n` to start a new search, which asks for the
-flight number, then the origin (optional — press Enter to skip), then the
-destination.
+Recently tracked flights are colour-coded by how fresh the saved position is:
+green under 10 minutes, amber under an hour, red beyond that. Picking one opens
+straight away on cached data if that is still usable, otherwise it fetches.
 
 The same starting point can be given on the command line:
 
@@ -178,16 +194,30 @@ notifications turned on for it.
 
 1. In that server: **Server Settings → Integrations → Webhooks → New
    Webhook**, pick the channel, copy the webhook URL.
-2. Point flighttrack at it:
+2. In flighttrack: main menu → **Setup Discord webhook** → paste it → Enter.
+   It is validated immediately and remembered for next time. `ctrl+t` on that
+   screen sends a real test notification, so you can confirm delivery there
+   and then without needing `-dev` mode or a real flight.
+
+The webhook is then used automatically by both the dashboard and watch mode.
+For a one-off override, or for watch mode running somewhere without the
+in-app screen, the command line still works the same way:
 
 ```powershell
 flighttrack -flight QF2 -to LHR -discord https://discord.com/api/webhooks/123.../abcXYZ
 flighttrack watch -flights QF2,CX251 -notify console,discord -discord-url https://discord.com/api/webhooks/123.../abcXYZ
 ```
 
-The URL can also come from `FLIGHTTRACK_DISCORD`. Treat it like a password —
-anyone with it can post into that channel — but unlike a bot token it can't
-do anything beyond that one channel.
+The URL can also come from `FLIGHTTRACK_DISCORD`. A flag or env value always
+wins over whatever was saved via Setup Discord webhook. Treat the URL like a
+password — anyone with it can post into that channel — but unlike a bot token
+it can't do anything beyond that one channel.
+
+### Settings
+
+Main menu → **Settings** picks a colour theme — Default, High Contrast, or
+Monochrome — applied immediately and remembered. Monochrome trades away the
+green/amber/red status colouring for a plain look; the others keep it.
 
 ## API credentials
 
@@ -209,6 +239,7 @@ this app never writes them to disk.
 | What | Where |
 | --- | --- |
 | Search history and cached positions | `%APPDATA%\flighttrack\history.json` |
+| Discord webhook and colour theme | `%APPDATA%\flighttrack\config.json` |
 | Watch-mode flight states | `flighttrack-watch-state.json` in the working directory |
 
 The history keeps your five most recent searches. `flighttrack history` prints
@@ -284,12 +315,15 @@ internal/opensky/          API client, flight-number matching
 internal/eta/              great-circle maths, arrival estimates
 internal/airports/         embedded airport table
 internal/history/          saved searches and position cache
+internal/config/           saved Discord webhook and colour theme
 internal/notify/           desktop, webhook and Discord notifications
 internal/textfmt/          shared text helpers
 internal/version/          build stamp and the GitHub release check
 ```
 
 Inside `internal/ui`, each screen keeps its key handling and its rendering in
-one file (`screen_history.go`, `screen_flight.go`, `screen_airport.go`,
-`screen_dashboard.go`), with `model.go` holding the shared state and
-`update.go` routing messages between them.
+one file (`screen_main.go`, `screen_history.go`, `screen_flight.go`,
+`screen_airport.go`, `screen_dashboard.go`, `screen_discord_setup.go`,
+`screen_settings.go`, `screen_handbook.go`), with `model.go` holding the
+shared state, `update.go` routing messages between them, and `styles.go`
+holding the colour themes.

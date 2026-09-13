@@ -7,10 +7,13 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"flighttrack/internal/airports"
+	"flighttrack/internal/config"
 	"flighttrack/internal/eta"
+	"flighttrack/internal/history"
 	"flighttrack/internal/notify"
 	"flighttrack/internal/opensky"
 )
@@ -19,16 +22,21 @@ func newTestModel(t *testing.T) model {
 	t.Helper()
 	fi := textinput.New()
 	di := textinput.New()
+	ci := textinput.New()
 	return model{
-		client:      opensky.New("", ""),
-		screen:      screenFlight,
-		flightInput: fi,
-		destInput:   di,
-		spin:        spinner.New(),
-		now:         time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC),
-		refreshIn:   defaultRefresh,
-		width:       120,
-		height:      40,
+		client:       opensky.New("", ""),
+		screen:       screenFlight,
+		flightInput:  fi,
+		destInput:    di,
+		discordInput: ci,
+		handbook:     viewport.New(handbookWidth, 20),
+		hist:         &history.File{},
+		cfg:          &config.Config{},
+		spin:         spinner.New(),
+		now:          time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC),
+		refreshIn:    defaultRefresh,
+		width:        120,
+		height:       40,
 	}
 }
 
@@ -534,5 +542,242 @@ func TestSimulateLandingIsDevOnly(t *testing.T) {
 	_, cmd := m.onDashKey(tea.KeyMsg{Type: tea.KeyCtrlT})
 	if cmd != nil {
 		t.Error("ctrl+t should be inert when not in dev mode")
+	}
+}
+
+// ------------------------------------------------------------- navigation
+//
+// The main menu sits above everything else now. Esc should walk back toward
+// it one level at a time; only the top screens (main, history) treat a bare
+// "q" as an immediate quit, since every other screen has a live text input
+// where "q" is just a letter.
+
+func TestMainMenuIsTheDefaultEntryScreen(t *testing.T) {
+	m := newModel(defaultRefresh, true)
+	if m.screen != screenMain {
+		t.Errorf("a fresh model should open on the main menu, got screen %d", m.screen)
+	}
+}
+
+func TestPreseedingAFlightSkipsTheMainMenu(t *testing.T) {
+	m := newModel(defaultRefresh, true)
+	if err := m.preseed("BA117", "", "LHR"); err != nil {
+		t.Fatal(err)
+	}
+	if m.screen != screenFlight {
+		t.Errorf("a preseeded flight should skip straight to the flight screen, got %d", m.screen)
+	}
+	if !m.loading {
+		t.Error("a preseeded flight should start loading immediately")
+	}
+}
+
+func TestEscFromFlightReturnsToMainMenu(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenFlight
+	updated, _ := m.onFlightKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(model).screen != screenMain {
+		t.Error("esc on the flight screen should return to the main menu, not quit")
+	}
+}
+
+func TestEscFromHistoryReturnsToMainMenuButQQuits(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenHistory
+
+	updated, _ := m.onHistoryKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(model).screen != screenMain {
+		t.Error("esc on the history screen should return to the main menu")
+	}
+
+	_, cmd := m.onHistoryKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	quitMsg := cmd()
+	if _, ok := quitMsg.(tea.QuitMsg); !ok {
+		t.Errorf("q on the history screen should quit, got %T", quitMsg)
+	}
+}
+
+func TestMainMenuNavigatesToEachDestination(t *testing.T) {
+	cases := []struct {
+		item int
+		want screen
+	}{
+		{mainSearch, screenFlight},
+		{mainRecent, screenHistory},
+		{mainDiscordSetup, screenDiscordSetup},
+		{mainSettings, screenSettings},
+		{mainHandbook, screenHandbook},
+	}
+	for _, c := range cases {
+		m := newTestModel(t)
+		m.screen = screenMain
+		updated, _ := m.activateMain(c.item)
+		if got := updated.(model).screen; got != c.want {
+			t.Errorf("activateMain(%d) -> screen %d, want %d", c.item, got, c.want)
+		}
+	}
+}
+
+func TestMainMenuQuits(t *testing.T) {
+	m := newTestModel(t)
+	_, cmd := m.activateMain(mainQuit)
+	if cmd == nil {
+		t.Fatal("quit should produce a command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("the quit item should send tea.Quit")
+	}
+}
+
+// ------------------------------------------------------------- discord setup
+
+func TestDiscordSetupSavesAValidURL(t *testing.T) {
+	m := newTestModel(t)
+	m.cfgPath = "" // saveConfig is a no-op without a path; the point here is validation + m.discord
+	m.discordInput.SetValue("https://discord.com/api/webhooks/123456789012345678/aBcDeF")
+
+	updated, _ := m.saveDiscordSetup()
+	m2 := updated.(model)
+	if m2.discord == nil {
+		t.Fatal("a valid webhook URL should configure m.discord")
+	}
+	if !m2.discordSetupOK {
+		t.Errorf("expected success, got message %q", m2.discordSetupMsg)
+	}
+	if m2.cfg.DiscordWebhookURL == "" {
+		t.Error("the URL should be recorded on cfg for saving")
+	}
+}
+
+func TestDiscordSetupRejectsABadURL(t *testing.T) {
+	m := newTestModel(t)
+	m.discordInput.SetValue("https://discord.gg/not-a-webhook")
+
+	updated, _ := m.saveDiscordSetup()
+	m2 := updated.(model)
+	if m2.discord != nil {
+		t.Error("an invalid URL must not configure m.discord")
+	}
+	if m2.discordSetupOK {
+		t.Error("an invalid URL should not report success")
+	}
+	if m2.discordSetupMsg == "" {
+		t.Error("expected an error message explaining the rejection")
+	}
+}
+
+// An empty box is how you remove a previously configured webhook, not an
+// error.
+func TestDiscordSetupClearsOnEmptyInput(t *testing.T) {
+	m := newTestModel(t)
+	m.discord = &notify.Discord{URL: "https://discord.com/api/webhooks/1/abc"}
+	m.cfg.DiscordWebhookURL = "https://discord.com/api/webhooks/1/abc"
+	m.discordInput.SetValue("")
+
+	updated, _ := m.saveDiscordSetup()
+	m2 := updated.(model)
+	if m2.discord != nil {
+		t.Error("clearing the box should clear m.discord")
+	}
+	if m2.cfg.DiscordWebhookURL != "" {
+		t.Error("clearing the box should clear the saved URL too")
+	}
+	if !m2.discordSetupOK {
+		t.Error("clearing is a successful action, not an error")
+	}
+}
+
+func TestDiscordTestSendNeedsAConfiguredWebhookFirst(t *testing.T) {
+	m := newTestModel(t)
+	updated, cmd := m.sendDiscordTest()
+	if cmd != nil {
+		t.Error("a test send with nothing configured should not produce a command")
+	}
+	if updated.(model).discordSetupOK {
+		t.Error("expected a message explaining nothing is configured yet")
+	}
+}
+
+func TestDiscordTestSendFiresWhenConfigured(t *testing.T) {
+	m := newTestModel(t)
+	m.discord = &notify.Discord{URL: "https://discord.com/api/webhooks/1/abc"}
+	_, cmd := m.sendDiscordTest()
+	if cmd == nil {
+		t.Fatal("expected a command that sends the test notification")
+	}
+}
+
+func TestEscFromDiscordSetupReturnsToMainMenu(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenDiscordSetup
+	updated, _ := m.onDiscordSetupKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(model).screen != screenMain {
+		t.Error("esc on discord setup should return to the main menu")
+	}
+}
+
+// ------------------------------------------------------------------ settings
+
+func TestSettingsAppliesAndRemembersATheme(t *testing.T) {
+	defer applyTheme(DefaultTheme) // do not leak the picked theme into other tests
+	m := newTestModel(t)
+	m.screen = screenSettings
+	m.settingsIdx = 0
+
+	// Move to a non-default theme and pick it.
+	for themeOrder[m.settingsIdx] == DefaultTheme && m.settingsIdx < len(themeOrder)-1 {
+		m.settingsIdx++
+	}
+	picked := themeOrder[m.settingsIdx]
+
+	updated, _ := m.onSettingsKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m2 := updated.(model)
+	if currentTheme != picked {
+		t.Errorf("currentTheme = %q, want %q", currentTheme, picked)
+	}
+	if m2.cfg.Theme != picked {
+		t.Errorf("cfg.Theme = %q, want %q", m2.cfg.Theme, picked)
+	}
+}
+
+func TestEscFromSettingsReturnsToMainMenu(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenSettings
+	updated, _ := m.onSettingsKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(model).screen != screenMain {
+		t.Error("esc on settings should return to the main menu")
+	}
+}
+
+// ------------------------------------------------------------------ handbook
+
+func TestHandbookOpensAndGoesBack(t *testing.T) {
+	m := newTestModel(t)
+	m.screen = screenMain
+	updated, _ := m.activateMain(mainHandbook)
+	m2 := updated.(model)
+	if m2.screen != screenHandbook {
+		t.Fatal("expected the handbook to open")
+	}
+	if !strings.Contains(m2.viewHandbook(), "FLIGHTTRACK HANDBOOK") {
+		t.Error("the handbook should render its content")
+	}
+
+	updated, _ = m2.onHandbookKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(model).screen != screenMain {
+		t.Error("esc on the handbook should return to the main menu")
+	}
+}
+
+// ------------------------------------------------------------- info panel
+
+func TestInfoPanelShowsDiscordStatus(t *testing.T) {
+	m := airborneModel(t)
+	if strings.Contains(m.infoPanel(30), "configured") {
+		t.Error("with no discord notifier, the panel should not claim one is configured")
+	}
+	m.discord = &notify.Discord{URL: "https://discord.com/api/webhooks/1/abc"}
+	if !strings.Contains(m.infoPanel(30), "configured") {
+		t.Error("with a discord notifier set, the panel should say so")
 	}
 }

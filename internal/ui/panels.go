@@ -232,6 +232,11 @@ func (m model) infoPanel(width int) string {
 		apiMode = "authenticated"
 	}
 	b.WriteString(dimStyle.Render("api mode   ") + apiMode + "\n")
+	if m.discord != nil {
+		b.WriteString(dimStyle.Render("discord    ") + goodStyle.Render("configured") + "\n")
+	} else {
+		b.WriteString(dimStyle.Render("discord    ") + dimStyle.Render("not set") + "\n")
+	}
 	b.WriteString(dimStyle.Render("clock      ") + m.now.UTC().Format("15:04:05") + " GMT" + "\n")
 
 	if m.errMsg != "" {

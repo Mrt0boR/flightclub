@@ -60,6 +60,12 @@ off ntfy.sh, but that has not yet been confirmed with a real landing.
       see the conversation this was scoped in) or Telegram (a bot-to-user
       chat, similar weight to a Discord bot but no shared-server
       requirement).
+- [x] In-app setup (2026-09-13): main menu -> Setup Discord webhook, with
+      validation and a ctrl+t test-send, so this no longer needs -dev mode
+      or editing a flag to try. Saved to internal/config, alongside a
+      colour theme (Settings screen: Default / High Contrast /
+      Monochrome). The reliability question above is unaffected by this
+      — it is still unconfirmed with a real landing.
 - [ ] If self-hosting ends up wanted anyway (e.g. because the Pi is already
       running for always-on watch), self-hosted ntfy is still on the table
       — `NewNtfy` at tag `archive/ntfy-attempt` needs no changes to point

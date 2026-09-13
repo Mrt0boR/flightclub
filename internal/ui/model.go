@@ -11,10 +11,12 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"flighttrack/internal/airports"
+	"flighttrack/internal/config"
 	"flighttrack/internal/eta"
 	"flighttrack/internal/history"
 	"flighttrack/internal/notify"
@@ -25,10 +27,16 @@ import (
 type screen int
 
 const (
-	screenHistory screen = iota
+	// screenMain is the entry point: everything else hangs off it. Naming a
+	// flight on the command line, or dev mode, skips straight past it.
+	screenMain screen = iota
+	screenHistory
 	screenFlight
 	screenDest
 	screenDash
+	screenDiscordSetup
+	screenSettings
+	screenHandbook
 )
 
 const (
@@ -55,9 +63,19 @@ type model struct {
 	loading bool
 	errMsg  string
 
-	flightInput textinput.Model
-	destInput   textinput.Model
-	spin        spinner.Model
+	flightInput  textinput.Model
+	destInput    textinput.Model
+	discordInput textinput.Model
+	handbook     viewport.Model
+	spin         spinner.Model
+
+	mainMenuIdx int
+	settingsIdx int
+
+	cfg             *config.Config
+	cfgPath         string
+	discordSetupMsg string
+	discordSetupOK  bool
 
 	flight      opensky.FlightID
 	flightTyped string // what the user actually entered, for display
@@ -280,4 +298,13 @@ func (m model) persist() {
 		// Nothing to show at exit; the dashboard reports it while running.
 		return
 	}
+}
+
+// saveConfig writes the in-app settings (Discord webhook, theme) back to
+// disk. Called whenever the Discord Setup or Settings screen changes one.
+func (m *model) saveConfig() error {
+	if m.cfgPath == "" || m.cfg == nil {
+		return nil
+	}
+	return m.cfg.Save(m.cfgPath)
 }

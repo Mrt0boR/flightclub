@@ -41,8 +41,12 @@ func (m model) onHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.hist = &history.File{}
 		m.histIdx = 0
 		return m.startNewSearch()
-	case "q", "esc":
+	case "q":
 		return m, tea.Quit
+	case "esc":
+		m.screen = screenMain
+		m.errMsg = ""
+		return m, nil
 	case "enter", " ":
 		if entryCount == 0 {
 			return m.startNewSearch()
@@ -133,7 +137,7 @@ func (m model) viewHistory() string {
 		b.WriteString("\n  " + badStyle.Render(m.errMsg) + "\n")
 	}
 
-	b.WriteString("\n" + dimStyle.Render("enter to reopen    n for a new search    c to clear history    q to quit") + "\n")
+	b.WriteString("\n" + dimStyle.Render("enter to reopen    n for a new search    c to clear history    esc back    q to quit") + "\n")
 	b.WriteString(dimStyle.Render(fmt.Sprintf("green under 10m, amber under 1h, red older and refetched on open (%s)",
 		m.histPath)) + "\n")
 	return b.String()
